@@ -1,0 +1,122 @@
+use chrono::NaiveDate;
+use datewise::fields::{
+    find_ordinal_date, find_time, find_time_range, month_prefix, weekday_before,
+};
+use datewise::names::{month_from_name, ordinal_suffix_len, weekday_from_name};
+use datewise::relative::{parse_relative, Window};
+use datewise::resolve::{resolve_date, YearMode};
+use datewise::zone::{local_date, parse_zone};
+
+const FRAGMENTS: &[&str] = &[
+    "jan",
+    "Sept",
+    "MAY",
+    "dec",
+    "24th",
+    "1st",
+    "3",
+    "12",
+    "2026",
+    "12:30",
+    "11.45",
+    "am",
+    "pm",
+    " ",
+    "  ",
+    "-",
+    "\u{2013}",
+    "\u{e9}",
+    "\u{1F600}",
+    "\u{0}",
+    ".",
+    ",",
+    ":",
+    "next",
+    "the",
+    "on",
+    "this",
+    "week",
+    "Friday",
+    "thurs",
+    "today",
+    "2026-10-03",
+    "of",
+    "/",
+];
+
+struct Lcg(u64);
+
+impl Lcg {
+    fn next(&mut self) -> u64 {
+        self.0 = self
+            .0
+            .wrapping_mul(6_364_136_223_846_793_005)
+            .wrapping_add(1_442_695_040_888_963_407);
+        self.0 >> 33
+    }
+
+    fn below(&mut self, n: usize) -> usize {
+        usize::try_from(self.next()).unwrap() % n
+    }
+
+    fn text(&mut self) -> String {
+        let mut out = String::new();
+        for _ in 0..self.below(14) {
+            if self.below(4) == 0 {
+                let code = u32::try_from(self.next() % 0x11_0000).unwrap();
+                out.push(char::from_u32(code).unwrap_or('\u{fffd}'));
+            } else {
+                out.push_str(FRAGMENTS[self.below(FRAGMENTS.len())]);
+            }
+        }
+        out
+    }
+}
+
+fn exercise(text: &str, today: NaiveDate, window: Window) {
+    let _ = find_ordinal_date(text);
+    let _ = find_time(text);
+    let _ = find_time_range(text);
+    let _ = weekday_before(text);
+    let _ = month_prefix(text);
+    let _ = month_from_name(text);
+    let _ = weekday_from_name(text);
+    let _ = ordinal_suffix_len(text);
+    let _ = parse_zone(text);
+    let _ = parse_relative(text, today, window);
+}
+
+#[test]
+fn random_text_never_panics() {
+    let todays = [
+        NaiveDate::from_ymd_opt(2026, 10, 2).unwrap(),
+        NaiveDate::from_ymd_opt(2024, 2, 29).unwrap(),
+        NaiveDate::MIN,
+        NaiveDate::MAX,
+    ];
+    let window = Window::new(NaiveDate::MIN, NaiveDate::MAX).unwrap();
+    let mut rng = Lcg(0x5eed);
+    for _ in 0..20_000 {
+        let text = rng.text();
+        let today = todays[rng.below(todays.len())];
+        exercise(&text, today, window);
+        let long = text.repeat(40);
+        exercise(&long, today, window);
+    }
+}
+
+#[test]
+fn random_numbers_never_panic() {
+    let mut rng = Lcg(42);
+    for _ in 0..20_000 {
+        let day = u32::try_from(rng.next() % 64).unwrap();
+        let month = u32::try_from(rng.next() % 16).unwrap();
+        let year = i32::try_from(rng.next() % 600_000).unwrap() - 300_000;
+        let anchor = NaiveDate::from_num_days_from_ce_opt(i32::try_from(rng.next()).unwrap())
+            .unwrap_or(NaiveDate::MAX);
+        let _ = resolve_date(day, month, Some(year), anchor, YearMode::NextOnOrAfter);
+        let _ = resolve_date(day, month, None, anchor, YearMode::NextOnOrAfter);
+        let epoch = i64::try_from(rng.next()).unwrap() * i64::try_from(rng.next()).unwrap();
+        let _ = local_date(epoch, chrono_tz::Europe::London);
+    }
+}
