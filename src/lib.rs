@@ -10,16 +10,16 @@
 )]
 #![allow(clippy::module_name_repetitions)]
 
+mod datewise;
 pub mod fields;
 pub mod locale;
 pub mod names;
-mod parser;
 pub mod relative;
 pub mod resolve;
 mod scan;
 pub mod zone;
 
-pub use parser::{ConfigError, ParseError, Parsed, Parser};
+pub use datewise::{ConfigError, Datewise, ParseError, Parsed};
 
 /// Longest input, in bytes, accepted by whole-input parsers; finders scan any length.
 pub const MAX_INPUT_BYTES: usize = 512;

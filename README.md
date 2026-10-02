@@ -8,11 +8,9 @@ Dependencies:
 - [`chrono-tz`](https://crates.io/crates/chrono-tz)
 
 ```rust
-use chrono::NaiveDate;
-use datewise::{ParseError, Parser};
+use datewise::{Datewise, ParseError};
 
-let today = NaiveDate::from_ymd_opt(2026, 10, 2).unwrap();
-let parser = Parser::new("en-GB", today).unwrap();
+let parser = Datewise::new("en-GB", "2026-10-02").unwrap();
 
 assert_eq!(parser.parse("03/11/2026").unwrap().to_string(), "2026-11-03");
 assert_eq!(parser.parse("tomorrow at 3pm").unwrap().to_string(), "2026-10-03T15:00:00");

@@ -1,6 +1,5 @@
 use chrono::{DateTime, FixedOffset, NaiveDate, NaiveDateTime};
-use datewise::relative::Window;
-use datewise::{ConfigError, ParseError, Parsed, Parser};
+use datewise::{ConfigError, Datewise, ParseError, Parsed};
 
 fn d(y: i32, m: u32, day: u32) -> NaiveDate {
     NaiveDate::from_ymd_opt(y, m, day).unwrap()
@@ -14,22 +13,17 @@ fn instant(rfc3339: &str) -> Parsed {
     Parsed::Instant(DateTime::<FixedOffset>::parse_from_rfc3339(rfc3339).unwrap())
 }
 
-fn gb() -> Parser {
-    Parser::new("en-GB", d(2026, 10, 2)).unwrap()
+fn gb() -> Datewise {
+    Datewise::new("en-GB", "2026-10-02").unwrap()
 }
 
-fn us() -> Parser {
-    Parser::new("en-US", d(2026, 10, 2)).unwrap()
-}
-
-fn window(start: NaiveDate, end: NaiveDate) -> Window {
-    Window::new(start, end).unwrap()
+fn us() -> Datewise {
+    Datewise::new("en-US", "2026-10-02").unwrap()
 }
 
 #[test]
 fn readme_example() {
-    let today = d(2026, 10, 2);
-    let parser = Parser::new("en-GB", today).unwrap();
+    let parser = Datewise::new("en-GB", "2026-10-02").unwrap();
     let parsed = parser.parse("03/11/2026").unwrap();
     assert_eq!(parsed, Parsed::Date(d(2026, 11, 3)));
     assert_eq!(parsed.to_string(), "2026-11-03");
@@ -42,13 +36,43 @@ fn readme_example() {
 #[test]
 fn unknown_locale_is_a_config_error() {
     assert_eq!(
-        Parser::new("fr-FR", d(2026, 10, 2)).unwrap_err(),
+        Datewise::new("fr-FR", "2026-10-02").unwrap_err(),
         ConfigError::UnknownLocale
     );
     assert_eq!(
-        Parser::new("en", d(2026, 10, 2)).unwrap_err(),
+        Datewise::new("en", "2026-10-02").unwrap_err(),
         ConfigError::UnknownLocale
     );
+}
+
+#[test]
+fn today_and_window_must_be_valid_dates() {
+    for bad in [
+        "2026-02-30",
+        "2026-1-05",
+        "02/10/2026",
+        "",
+        " 2026-10-02",
+        "2026-10-02x",
+    ] {
+        assert_eq!(
+            Datewise::new("en-GB", bad).unwrap_err(),
+            ConfigError::InvalidDate
+        );
+        assert_eq!(
+            gb().within(bad, "2026-12-31").unwrap_err(),
+            ConfigError::InvalidDate
+        );
+        assert_eq!(
+            gb().within("2026-01-01", bad).unwrap_err(),
+            ConfigError::InvalidDate
+        );
+    }
+    assert_eq!(
+        gb().within("2026-12-31", "2026-10-01").unwrap_err(),
+        ConfigError::InvalidWindow
+    );
+    assert!(gb().within("2026-10-01", "2026-10-01").is_ok());
 }
 
 #[test]
@@ -76,12 +100,12 @@ fn yearless_dates_are_unlimited_without_a_window() {
 
 #[test]
 fn yearless_dates_take_the_nearest_year_then_check_the_window() {
-    let p = gb().within(window(d(2026, 10, 1), d(2026, 12, 31)));
+    let p = gb().within("2026-10-01", "2026-12-31").unwrap();
     assert_eq!(p.parse("3 March"), Err(ParseError::OutOfWindow));
     // No skipping ahead to a later year that would fit.
-    let later = gb().within(window(d(2027, 6, 1), d(2028, 12, 31)));
+    let later = gb().within("2027-06-01", "2028-12-31").unwrap();
     assert_eq!(later.parse("3 March"), Err(ParseError::OutOfWindow));
-    let fits = gb().within(window(d(2027, 1, 1), d(2028, 12, 31)));
+    let fits = gb().within("2027-01-01", "2028-12-31").unwrap();
     assert_eq!(fits.parse("3 March"), Ok(Parsed::Date(d(2027, 3, 3))));
 }
 
@@ -112,7 +136,7 @@ fn prefer_past_leaves_other_phrases_alone() {
 
 #[test]
 fn window_is_inclusive_and_rejects_outside_dates() {
-    let p = gb().within(window(d(2026, 10, 2), d(2026, 10, 3)));
+    let p = gb().within("2026-10-02", "2026-10-03").unwrap();
     assert_eq!(p.parse("today"), Ok(Parsed::Date(d(2026, 10, 2))));
     assert_eq!(p.parse("tomorrow"), Ok(Parsed::Date(d(2026, 10, 3))));
     assert_eq!(p.parse("yesterday"), Err(ParseError::OutOfWindow));
@@ -126,7 +150,7 @@ fn window_is_inclusive_and_rejects_outside_dates() {
 
 #[test]
 fn spans_need_only_partial_overlap() {
-    let p = gb().within(window(d(2026, 10, 2), d(2026, 10, 5)));
+    let p = gb().within("2026-10-02", "2026-10-05").unwrap();
     assert_eq!(
         p.parse("this week"),
         Ok(Parsed::DateSpan(d(2026, 9, 28), d(2026, 10, 4)))
@@ -135,7 +159,7 @@ fn spans_need_only_partial_overlap() {
         p.parse("next week"),
         Ok(Parsed::DateSpan(d(2026, 10, 5), d(2026, 10, 11)))
     );
-    let short = gb().within(window(d(2026, 10, 2), d(2026, 10, 4)));
+    let short = gb().within("2026-10-02", "2026-10-04").unwrap();
     assert_eq!(short.parse("next week"), Err(ParseError::OutOfWindow));
 }
 
@@ -224,7 +248,7 @@ fn time_only_regional_zone_uses_today() {
         us().parse("3pm ET"),
         Ok(instant("2026-10-02T15:00:00-04:00"))
     );
-    let winter = Parser::new("en-US", d(2026, 12, 1)).unwrap();
+    let winter = Datewise::new("en-US", "2026-12-01").unwrap();
     assert_eq!(
         winter.parse("3pm ET"),
         Ok(instant("2026-12-01T15:00:00-05:00"))
@@ -260,12 +284,12 @@ fn ambiguous_zones_and_dates_list_every_reading() {
             instant("2026-10-02T15:00:00+02:00"),
         ]))
     );
-    let india = Parser::new("en-IN", d(2026, 10, 2)).unwrap();
+    let india = Datewise::new("en-IN", "2026-10-02").unwrap();
     assert_eq!(
         india.parse("3pm IST"),
         Ok(instant("2026-10-02T15:00:00+05:30"))
     );
-    let canada = Parser::new("en-CA", d(2026, 10, 2)).unwrap();
+    let canada = Datewise::new("en-CA", "2026-10-02").unwrap();
     assert_eq!(
         canada.parse("03/04/2026"),
         Err(ParseError::Ambiguous(vec![
@@ -280,9 +304,9 @@ fn ambiguous_zones_and_dates_list_every_reading() {
             Parsed::DateTime(dt(2026, 3, 4, 15, 0)),
         ]))
     );
-    let april = canada.within(window(d(2026, 4, 1), d(2026, 4, 30)));
+    let april = canada.within("2026-04-01", "2026-04-30").unwrap();
     assert_eq!(april.parse("03/04/2026"), Ok(Parsed::Date(d(2026, 4, 3))));
-    let summer = canada.within(window(d(2026, 6, 1), d(2026, 8, 31)));
+    let summer = canada.within("2026-06-01", "2026-08-31").unwrap();
     assert_eq!(summer.parse("03/04/2026"), Err(ParseError::OutOfWindow));
 }
 
@@ -333,6 +357,14 @@ fn errors_display() {
     assert_eq!(
         ConfigError::UnknownLocale.to_string(),
         "unknown or unsupported locale tag"
+    );
+    assert_eq!(
+        ConfigError::InvalidDate.to_string(),
+        "date is not a valid YYYY-MM-DD"
+    );
+    assert_eq!(
+        ConfigError::InvalidWindow.to_string(),
+        "window start is after its end"
     );
     assert_eq!(
         ParseError::Unparsed.to_string(),

@@ -1,4 +1,4 @@
-use crate::fields::find_time;
+use crate::fields::{find_time, iso_date};
 use crate::locale::Locale;
 use crate::relative::grammar::{self, Parsed as Phrase};
 use crate::relative::Window;
@@ -8,17 +8,25 @@ use crate::zone::{find_zone, FoundZone};
 use chrono::{DateTime, FixedOffset, NaiveDate, NaiveDateTime, TimeZone, Utc};
 use std::fmt;
 
-/// The parser could not be configured.
+/// [`Datewise`] could not be configured.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[non_exhaustive]
 pub enum ConfigError {
     /// The locale tag is not a supported English region such as `en-GB`.
     UnknownLocale,
+    /// A date is not a valid `YYYY-MM-DD`.
+    InvalidDate,
+    /// The window's start is after its end.
+    InvalidWindow,
 }
 
 impl fmt::Display for ConfigError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str("unknown or unsupported locale tag")
+        f.write_str(match self {
+            ConfigError::UnknownLocale => "unknown or unsupported locale tag",
+            ConfigError::InvalidDate => "date is not a valid YYYY-MM-DD",
+            ConfigError::InvalidWindow => "window start is after its end",
+        })
     }
 }
 
@@ -122,32 +130,32 @@ impl fmt::Display for Parsed {
 }
 
 /// Parses whole phrases such as `tomorrow at 3pm ET` relative to a fixed `today`.
-///
-/// ```
-/// use chrono::NaiveDate;
-/// use datewise::{Parsed, Parser};
-///
-/// let today = NaiveDate::from_ymd_opt(2026, 10, 2).unwrap();
-/// let parser = Parser::new("en-GB", today).unwrap();
-/// assert_eq!(parser.parse("03/11/2026").unwrap().to_string(), "2026-11-03");
-/// assert_eq!(parser.parse("tomorrow at 3pm").unwrap().to_string(), "2026-10-03T15:00:00");
-/// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct Parser {
+pub struct Datewise {
     locale: Locale,
     today: NaiveDate,
     window: Option<Window>,
     mode: YearMode,
 }
 
-impl Parser {
-    /// A parser for `locale_tag` (such as `en-GB`) with no window, preferring future dates.
+impl Datewise {
+    /// Phrases for `locale_tag` (such as `en-GB`) relative to `today` (`YYYY-MM-DD`), preferring future dates.
+    ///
+    /// ```
+    /// use datewise::Datewise;
+    ///
+    /// let dw = Datewise::new("en-GB", "2026-10-02")?;
+    /// assert_eq!(dw.parse("next friday")?.to_string(), "2026-10-09");
+    /// assert_eq!(dw.parse("tomorrow at 3pm")?.to_string(), "2026-10-03T15:00:00");
+    /// # Ok::<(), Box<dyn std::error::Error>>(())
+    /// ```
     ///
     /// # Errors
     ///
-    /// [`ConfigError::UnknownLocale`] if the tag is not a supported region.
-    pub fn new(locale_tag: &str, today: NaiveDate) -> Result<Self, ConfigError> {
+    /// [`ConfigError::UnknownLocale`] for an unsupported tag, [`ConfigError::InvalidDate`] for a bad `today`.
+    pub fn new(locale_tag: &str, today: &str) -> Result<Self, ConfigError> {
         let locale = Locale::from_tag(locale_tag).ok_or(ConfigError::UnknownLocale)?;
+        let today = date_arg(today)?;
         Ok(Self {
             locale,
             today,
@@ -156,11 +164,15 @@ impl Parser {
         })
     }
 
-    /// Rejects dates outside `window`; spans need only overlap it.
-    #[must_use]
-    pub fn within(mut self, window: Window) -> Self {
-        self.window = Some(window);
-        self
+    /// Rejects dates outside `start..=end` (`YYYY-MM-DD`); spans need only overlap it.
+    ///
+    /// # Errors
+    ///
+    /// [`ConfigError::InvalidDate`] for a bad date, [`ConfigError::InvalidWindow`] when `start` is after `end`.
+    pub fn within(mut self, start: &str, end: &str) -> Result<Self, ConfigError> {
+        let window = Window::new(date_arg(start)?, date_arg(end)?);
+        self.window = Some(window.ok_or(ConfigError::InvalidWindow)?);
+        Ok(self)
     }
 
     /// Reads bare weekdays, `the 14th` and yearless dates as on or before today.
@@ -266,6 +278,10 @@ impl Dates {
             Dates::Span(..) => Err(ParseError::Unparsed),
         }
     }
+}
+
+fn date_arg(text: &str) -> Result<NaiveDate, ConfigError> {
+    iso_date(text).ok_or(ConfigError::InvalidDate)
 }
 
 fn strip_at(head: &str) -> &str {

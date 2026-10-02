@@ -7,7 +7,7 @@ use datewise::names::{month_from_name, ordinal_suffix_len, weekday_from_name};
 use datewise::relative::{parse_relative, Window};
 use datewise::resolve::{local_instant, resolve_date, YearMode};
 use datewise::zone::{find_zone, local_date, parse_zone};
-use datewise::Parser;
+use datewise::Datewise;
 
 const FRAGMENTS: &[&str] = &[
     "jan",
@@ -125,11 +125,16 @@ fn exercise(text: &str, today: NaiveDate, window: Window) {
         let _ = find_numeric_date(text, Some(order));
     }
     let _ = Locale::from_tag(text);
-    let _ = Parser::new(text, today);
+    let iso = today.format("%Y-%m-%d").to_string();
+    let _ = Datewise::new(text, &iso);
+    let _ = Datewise::new("en-GB", text);
     for tag in ["en-GB", "en-US", "en-CA", "en-IN"] {
-        if let Ok(parser) = Parser::new(tag, today) {
-            let _ = parser.parse(text);
-            let _ = parser.within(window).prefer_past().parse(text);
+        if let Ok(dw) = Datewise::new(tag, &iso) {
+            let _ = dw.parse(text);
+            let _ = dw.within(text, &iso);
+            if let Ok(wide) = dw.within("0000-01-01", "9999-12-31") {
+                let _ = wide.prefer_past().parse(text);
+            }
         }
     }
 }
@@ -141,6 +146,8 @@ fn random_text_never_panics() {
         NaiveDate::from_ymd_opt(2024, 2, 29).unwrap(),
         NaiveDate::MIN,
         NaiveDate::MAX,
+        NaiveDate::from_ymd_opt(0, 1, 1).unwrap(),
+        NaiveDate::from_ymd_opt(9999, 12, 31).unwrap(),
     ];
     let window = Window::new(NaiveDate::MIN, NaiveDate::MAX).unwrap();
     let mut rng = Lcg(0x5eed);
