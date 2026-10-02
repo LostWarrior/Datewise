@@ -116,11 +116,8 @@ fn time_of(hour12: u32, minute: u32, pm: bool) -> Option<NaiveTime> {
 
 fn clock_start(text: &str, pos: usize) -> bool {
     let mut back = text.get(..pos).unwrap_or_default().chars().rev();
-    let inside = match (back.next(), back.next()) {
-        (Some(':'), _) => true,
-        (Some('.'), Some(c)) => c.is_ascii_digit(),
-        _ => false,
-    };
+    let inside =
+        matches!((back.next(), back.next()), (Some(':' | '.'), Some(c)) if c.is_ascii_digit());
     !inside && !glued_before(text, pos)
 }
 
@@ -147,7 +144,8 @@ fn time_number(s: &str) -> Option<(u32, u32, usize)> {
         return None;
     }
     let mut minute = 0;
-    let tail = s.get(len..)?.strip_prefix([':', '.']);
+    let after_hour = s.get(len..)?;
+    let tail = after_hour.strip_prefix([':', '.']);
     if let Some(more) = tail.filter(|t| t.starts_with(|c: char| c.is_ascii_digit())) {
         let (m, n) = digits(more, 3)?;
         if n != 2 || m > 59 {
@@ -155,8 +153,15 @@ fn time_number(s: &str) -> Option<(u32, u32, usize)> {
         }
         minute = m;
         len += 3;
+    } else if after_hour.starts_with(':') {
+        return None;
     }
-    Some((hour, minute, len))
+    let mut next = s.get(len..)?.chars();
+    match (next.next(), next.next()) {
+        (Some(':'), _) => None,
+        (Some('.'), Some(c)) if c.is_ascii_digit() => None,
+        _ => Some((hour, minute, len)),
+    }
 }
 
 fn meridiem(s: &str) -> Option<(bool, usize)> {

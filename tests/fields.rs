@@ -163,6 +163,9 @@ fn malformed_time_continuations_are_rejected() {
         "7pm-8:123",
         "7pm-8:30x",
         "7pm-123",
+        "7pm-8:xx",
+        "7pm-8:30:45",
+        "7pm-8.30.45",
     ] {
         assert_eq!(find_time_range(text), Ok(None), "{text}");
     }
@@ -206,4 +209,12 @@ fn dotted_meridiems_parse() {
     assert_eq!(find_time("at 9.30 A.M.").unwrap().time, t(9, 30));
     assert_eq!(range("7 p.m.-8 p.m."), (t(19, 0), t(20, 0)));
     assert!(find_time("9 a.mx").is_none());
+}
+
+#[test]
+fn label_colon_before_a_time_is_allowed() {
+    assert_eq!(find_time("Time:3pm").unwrap().time, t(15, 0));
+    assert_eq!(find_time("Time: 3pm").unwrap().time, t(15, 0));
+    assert_eq!(range("When:7pm-8pm"), (t(19, 0), t(20, 0)));
+    assert_eq!(find_time("ends at 8pm.").unwrap().time, t(20, 0));
 }
