@@ -4,8 +4,8 @@ mod abbrev;
 
 use crate::locale::Locale;
 use crate::scan::{digits, glued_before, within_limit};
-use abbrev::ABBREVIATIONS;
-use chrono::{DateTime, FixedOffset, NaiveDate};
+use abbrev::{Meaning, ABBREVIATIONS};
+use chrono::{DateTime, FixedOffset, NaiveDate, Offset, TimeDelta, TimeZone};
 use chrono_tz::Tz;
 use std::fmt;
 use std::ops::Range;
@@ -39,20 +39,25 @@ pub fn parse_zone(name: &str) -> Result<Tz, ZoneError> {
 /// The civil date at `epoch_ms` (Unix milliseconds) in `tz`; `None` if out of range.
 #[must_use]
 pub fn local_date(epoch_ms: i64, tz: Tz) -> Option<NaiveDate> {
-    let instant = DateTime::from_timestamp_millis(epoch_ms)?;
-    Some(instant.with_timezone(&tz).date_naive())
+    let utc = DateTime::from_timestamp_millis(epoch_ms)?.naive_utc();
+    let offset = tz.offset_from_utc_datetime(&utc).fix();
+    let seconds = i64::from(offset.local_minus_utc());
+    Some(
+        utc.checked_add_signed(TimeDelta::try_seconds(seconds)?)?
+            .date(),
+    )
 }
 
 /// A zone named in text.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[non_exhaustive]
 pub enum FoundZone {
-    /// A region-aware zone.
+    /// A region-aware zone, used for seasonless shorthands such as `ET`.
     Iana(Tz),
-    /// A fixed offset from UTC.
+    /// A fixed offset from UTC; `EST` and `EDT` keep their literal offsets.
     Fixed(FixedOffset),
-    /// The text has several meanings here: the known candidates, most likely first.
-    Ambiguous(&'static [Tz]),
+    /// The text has several meanings here: candidate UTC offsets in seconds east, most likely first.
+    Ambiguous(&'static [i32]),
 }
 
 /// A zone found in text.
@@ -101,9 +106,11 @@ fn word_at(
     let abbrev = ABBREVIATIONS
         .iter()
         .find(|a| rest.strip_prefix(a.name).is_some_and(word_end))?;
-    let zone = abbrev
-        .zone(region)
-        .map_or(FoundZone::Ambiguous(abbrev.candidates), FoundZone::Iana);
+    let zone = match abbrev.meaning(region) {
+        Some(Meaning::Region(tz)) => FoundZone::Iana(tz),
+        Some(Meaning::Offset(seconds)) => FixedOffset::east_opt(seconds).map(FoundZone::Fixed)?,
+        None => FoundZone::Ambiguous(abbrev.candidates),
+    };
     Some((abbrev.name.len(), zone))
 }
 

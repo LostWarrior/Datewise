@@ -1,11 +1,11 @@
-use chrono::NaiveDate;
+use chrono::{NaiveDate, NaiveDateTime, TimeDelta};
 use datewise::fields::{
     find_date, find_numeric_date, find_ordinal_date, find_time, find_time_range, month_prefix,
 };
 use datewise::locale::{DateOrder, Locale};
 use datewise::names::{month_from_name, ordinal_suffix_len, weekday_from_name};
 use datewise::relative::{parse_relative, Window};
-use datewise::resolve::{resolve_date, YearMode};
+use datewise::resolve::{local_instant, resolve_date, YearMode};
 use datewise::zone::{find_zone, local_date, parse_zone};
 
 const FRAGMENTS: &[&str] = &[
@@ -54,6 +54,16 @@ const FRAGMENTS: &[&str] = &[
     "PST",
     "IST",
     "CT",
+    "13:05pm",
+    "8:99",
+    "pm5",
+    "a.m.",
+    "p.m.",
+    "EST",
+    "EDT",
+    "ET",
+    "UTC-",
+    "7pm-8",
 ];
 
 struct Lcg(u64);
@@ -163,5 +173,40 @@ fn random_numbers_never_panic() {
         let _ = resolve_date(day, month, None, anchor, YearMode::PreviousOnOrBefore);
         let epoch = i64::try_from(rng.next()).unwrap() * i64::try_from(rng.next()).unwrap();
         let _ = local_date(epoch, chrono_tz::Europe::London);
+    }
+}
+
+#[test]
+fn extreme_instants_never_panic() {
+    let zones = [
+        chrono_tz::Europe::London,
+        chrono_tz::America::New_York,
+        chrono_tz::Asia::Tokyo,
+        chrono_tz::Pacific::Kiritimati,
+        chrono_tz::Pacific::Pago_Pago,
+    ];
+    let edges = [
+        i64::MIN,
+        i64::MAX,
+        -8_334_601_228_800_000,
+        8_210_266_876_799_999,
+    ];
+    let mut rng = Lcg(7);
+    for tz in zones {
+        for edge in edges {
+            for delta in (-100_000_000..=100_000_000).step_by(1_000_000) {
+                let _ = local_date(edge.saturating_add(delta), tz);
+            }
+            let _ = local_date(edge, tz);
+        }
+        for _ in 0..2_000 {
+            let _ = local_date(i64::try_from(rng.next()).unwrap() << 20, tz);
+        }
+        for edge in [NaiveDateTime::MIN, NaiveDateTime::MAX] {
+            for hours in -48..=48 {
+                let shifted = edge.checked_add_signed(TimeDelta::hours(hours));
+                let _ = local_instant(shifted.unwrap_or(edge), tz);
+            }
+        }
     }
 }

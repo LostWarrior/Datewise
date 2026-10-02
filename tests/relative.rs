@@ -252,3 +252,47 @@ fn oversized_input_is_unparsed() {
         Relative::Unparsed
     );
 }
+
+#[test]
+fn yearless_date_searches_the_whole_window() {
+    let today = d(2026, 10, 2);
+    assert_eq!(
+        parse_at("3 Oct", today, d(2028, 1, 1), d(2028, 12, 31)),
+        ok(2028, 10, 3)
+    );
+    assert_eq!(
+        parse_at("3 Oct", today, d(2027, 1, 1), d(2028, 12, 31)),
+        Relative::Ambiguous(vec![d(2027, 10, 3), d(2028, 10, 3)])
+    );
+    assert_eq!(
+        parse_at("3 Oct", today, d(2026, 1, 1), d(2026, 10, 2)),
+        Relative::OutOfWindow(d(2026, 10, 3))
+    );
+}
+
+#[test]
+fn yearless_date_ignores_occurrences_before_today() {
+    let today = d(2026, 10, 2);
+    assert_eq!(
+        parse_at("1 Oct", today, d(2026, 1, 1), d(2027, 12, 31)),
+        ok(2027, 10, 1)
+    );
+}
+
+#[test]
+fn yearless_date_in_a_huge_window_is_fast() {
+    let (start, end) = (NaiveDate::MIN, NaiveDate::MAX);
+    let today = d(2026, 10, 2);
+    assert_eq!(
+        parse_at("3 Oct", today, start, end),
+        Relative::Ambiguous(vec![d(2026, 10, 3), d(2027, 10, 3)])
+    );
+    assert_eq!(
+        parse_at("29 Feb", today, start, end),
+        Relative::Ambiguous(vec![d(2028, 2, 29), d(2032, 2, 29)])
+    );
+    assert_eq!(
+        parse_at("3 Oct", today, d(2200, 1, 1), end),
+        Relative::Ambiguous(vec![d(2200, 10, 3), d(2201, 10, 3)])
+    );
+}

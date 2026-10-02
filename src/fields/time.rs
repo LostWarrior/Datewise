@@ -1,4 +1,4 @@
-use crate::scan::{boundary, dash, digits, glued_before, skip_spaces};
+use crate::scan::{dash, digits, glued_before, skip_spaces};
 use chrono::NaiveTime;
 use std::fmt;
 use std::ops::Range;
@@ -47,12 +47,12 @@ struct Clock {
     len: usize,
 }
 
-/// Finds the first 12-hour time with an explicit `am`/`pm`, such as `3pm` or `11.45am`.
+/// Finds the first 12-hour time with an explicit `am`/`pm`, such as `3pm` or `11.45am`; an hour above 12 needs `pm`.
 #[must_use]
 pub fn find_time(text: &str) -> Option<TimeOfDay> {
     text.char_indices().find_map(|(start, _)| {
         let clock = clock_at(text.get(start..)?).filter(|c| c.pm.is_some())?;
-        (!glued_before(text, start)).then_some(())?;
+        clock_start(text, start).then_some(())?;
         Some(TimeOfDay {
             span: start..start + clock.len,
             time: time_of(clock.hour, clock.minute, clock.pm?)?,
@@ -67,7 +67,7 @@ pub fn find_time(text: &str) -> Option<TimeOfDay> {
 /// [`TimeError::AmbiguousMeridiem`] if the range cannot ascend.
 pub fn find_time_range(text: &str) -> Result<Option<TimeRange>, TimeError> {
     for (start, _) in text.char_indices() {
-        if glued_before(text, start) {
+        if !clock_start(text, start) {
             continue;
         }
         if let Some((first, second, end)) = range_at(text, start) {
@@ -114,45 +114,60 @@ fn time_of(hour12: u32, minute: u32, pm: bool) -> Option<NaiveTime> {
     NaiveTime::from_hms_opt(hour12 % 12 + if pm { 12 } else { 0 }, minute, 0)
 }
 
+fn clock_start(text: &str, pos: usize) -> bool {
+    let mut back = text.get(..pos).unwrap_or_default().chars().rev();
+    let inside = match (back.next(), back.next()) {
+        (Some(':'), _) => true,
+        (Some('.'), Some(c)) => c.is_ascii_digit(),
+        _ => false,
+    };
+    !inside && !glued_before(text, pos)
+}
+
 fn clock_at(s: &str) -> Option<Clock> {
     let (hour, minute, mut len) = time_number(s)?;
     let meridiem = meridiem(s.get(len..)?);
-    if let Some((_, n)) = meridiem {
-        len += n;
+    match meridiem {
+        Some((_, n)) => len += n,
+        None if s.get(len..)?.starts_with(char::is_alphanumeric) => return None,
+        None => {}
     }
-    Some(Clock {
+    let pm = meridiem.map(|(pm, _)| pm);
+    (hour <= 12 || pm == Some(true)).then_some(Clock {
         hour,
         minute,
-        pm: meridiem.map(|(pm, _)| pm),
+        pm,
         len,
     })
 }
 
 fn time_number(s: &str) -> Option<(u32, u32, usize)> {
     let (hour, mut len) = digits(s, 2)?;
-    if !(1..=12).contains(&hour) {
+    if !(1..=23).contains(&hour) {
         return None;
     }
     let mut minute = 0;
-    let sep = |c: char| c == ':' || c == '.';
-    if let Some((m, 2)) = s.get(len..)?.strip_prefix(sep).and_then(|t| digits(t, 2)) {
-        if m <= 59 {
-            minute = m;
-            len += 3;
+    let tail = s.get(len..)?.strip_prefix([':', '.']);
+    if let Some(more) = tail.filter(|t| t.starts_with(|c: char| c.is_ascii_digit())) {
+        let (m, n) = digits(more, 3)?;
+        if n != 2 || m > 59 {
+            return None;
         }
+        minute = m;
+        len += 3;
     }
     Some((hour, minute, len))
 }
 
 fn meridiem(s: &str) -> Option<(bool, usize)> {
     let rest = s.strip_prefix(' ').unwrap_or(s);
-    let head = rest.get(..2)?;
-    let pm = if head.eq_ignore_ascii_case("am") {
-        false
-    } else if head.eq_ignore_ascii_case("pm") {
-        true
-    } else {
-        return None;
-    };
-    boundary(rest.get(2..)?).then_some((pm, s.len() - rest.len() + 2))
+    let (pm, len) = [("am", false), ("pm", true), ("a.m.", false), ("p.m.", true)]
+        .into_iter()
+        .find(|(word, _)| {
+            rest.get(..word.len())
+                .is_some_and(|h| h.eq_ignore_ascii_case(word))
+        })
+        .map(|(word, pm)| (pm, word.len()))?;
+    let after = rest.get(len..)?;
+    (!after.starts_with(char::is_alphanumeric)).then_some((pm, s.len() - rest.len() + len))
 }

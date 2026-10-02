@@ -94,7 +94,6 @@ fn single_time_forms() {
     assert_eq!(find_time("at 12am").unwrap().time, t(0, 0));
     assert_eq!(find_time("at 12 PM.").unwrap().time, t(12, 0));
     assert!(find_time("at 9").is_none());
-    assert!(find_time("at 13pm").is_none());
     assert!(find_time("at 9:75am").is_none());
     let text = "meet 3pm";
     assert_eq!(&text[find_time(text).unwrap().span], "3pm");
@@ -153,4 +152,58 @@ fn numeric_date_in_text_reports_span_and_readings() {
     ] {
         assert_eq!(find_numeric_date(bad, None), None, "{bad}");
     }
+}
+
+#[test]
+fn malformed_time_continuations_are_rejected() {
+    for text in [
+        "7pm-8:99",
+        "7pm-8foo",
+        "7pm-8:9",
+        "7pm-8:123",
+        "7pm-8:30x",
+        "7pm-123",
+    ] {
+        assert_eq!(find_time_range(text), Ok(None), "{text}");
+    }
+    assert!(find_time("meet 8:99pm").is_none());
+    assert!(find_time("meet 7pm5").is_none());
+    assert!(find_time("meet 8:5pm").is_none());
+}
+
+#[test]
+fn a_match_never_starts_inside_another_clock() {
+    for text in [
+        "13:05am",
+        "00:30pm",
+        "0:30pm",
+        "0pm",
+        "9:75pm",
+        "5.45.30pm",
+        "9:30:45pm",
+    ] {
+        assert!(find_time(text).is_none(), "{text}");
+    }
+    assert_eq!(find_time("13:05pm").unwrap().time, t(13, 5));
+    assert_eq!(find_time("at 13pm").unwrap().time, t(13, 0));
+    assert_eq!(find_time("23:59pm").unwrap().time, t(23, 59));
+    assert!(find_time("24:00pm").is_none());
+}
+
+#[test]
+fn valid_ranges_still_parse() {
+    assert_eq!(range("7pm-8pm"), (t(19, 0), t(20, 0)));
+    assert_eq!(range("7-8pm"), (t(19, 0), t(20, 0)));
+    assert_eq!(range("9.30am-10.15am"), (t(9, 30), t(10, 15)));
+    assert_eq!(find_time_range("19:00-20:30"), Ok(None));
+    assert_eq!(find_time("9.30am").unwrap().time, t(9, 30));
+}
+
+#[test]
+fn dotted_meridiems_parse() {
+    assert_eq!(find_time("at 9a.m.").unwrap().time, t(9, 0));
+    assert_eq!(find_time("at 9 p.m. sharp").unwrap().time, t(21, 0));
+    assert_eq!(find_time("at 9.30 A.M.").unwrap().time, t(9, 30));
+    assert_eq!(range("7 p.m.-8 p.m."), (t(19, 0), t(20, 0)));
+    assert!(find_time("9 a.mx").is_none());
 }

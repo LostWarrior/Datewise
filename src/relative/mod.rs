@@ -14,7 +14,7 @@
 mod grammar;
 
 use crate::locale::Locale;
-use chrono::NaiveDate;
+use chrono::{Datelike, NaiveDate};
 
 /// An inclusive range of acceptable dates.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -68,7 +68,7 @@ pub enum Relative {
 /// Parses `text` relative to `today` and checks it against `window`; `locale` sets order and week start.
 ///
 /// ```
-/// use chrono::NaiveDate;
+/// use chrono::{Datelike, NaiveDate};
 /// use datewise::relative::{parse_relative, Relative, Window};
 ///
 /// let today = NaiveDate::from_ymd_opt(2026, 10, 2).unwrap();
@@ -112,11 +112,17 @@ fn yearless(day: u32, month: u32, today: NaiveDate, window: Window) -> Relative 
     let Some(first) = resolve_date(day, month, None, today, NextOnOrAfter) else {
         return Relative::Unparsed;
     };
-    let second = first
-        .succ_opt()
-        .and_then(|next| resolve_date(day, month, None, next, NextOnOrAfter));
-    let all: Vec<NaiveDate> = [Some(first), second].into_iter().flatten().collect();
-    among(&all, window)
+    let from = today.max(window.start());
+    let inside: Vec<NaiveDate> = (from.year()..=window.end().year())
+        .filter_map(|year| NaiveDate::from_ymd_opt(year, month, day))
+        .filter(|date| *date >= from && window.contains(*date))
+        .take(2)
+        .collect();
+    if inside.is_empty() {
+        Relative::OutOfWindow(first)
+    } else {
+        among(&inside, window)
+    }
 }
 
 fn among(candidates: &[NaiveDate], window: Window) -> Relative {

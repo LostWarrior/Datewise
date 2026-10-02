@@ -1,7 +1,8 @@
-use chrono::FixedOffset;
+use chrono::{FixedOffset, NaiveDate, TimeZone, Timelike, Utc};
 use chrono_tz::America::{Chicago, Denver, Los_Angeles, New_York};
 use chrono_tz::Tz;
 use datewise::locale::Locale;
+use datewise::resolve::local_instant;
 use datewise::zone::{find_zone, FoundZone};
 
 fn zone(text: &str, locale: Option<Locale>) -> Option<FoundZone> {
@@ -14,6 +15,13 @@ fn fixed(seconds: i32) -> Option<FoundZone> {
 
 fn iana(tz: Tz) -> Option<FoundZone> {
     Some(FoundZone::Iana(tz))
+}
+
+fn candidates(text: &str, locale: Option<Locale>) -> Vec<i32> {
+    match zone(text, locale) {
+        Some(FoundZone::Ambiguous(c)) => c.to_vec(),
+        other => panic!("{text}: {other:?}"),
+    }
 }
 
 fn ambiguous(text: &str, locale: Option<Locale>) -> bool {
@@ -63,72 +71,94 @@ fn offset_false_positives() {
 }
 
 #[test]
-fn north_american_abbreviations() {
+fn explicit_standard_and_daylight_abbreviations_are_fixed_offsets() {
     let cases = [
-        ("EST", New_York),
-        ("EDT", New_York),
-        ("CDT", Chicago),
-        ("MST", Denver),
-        ("MDT", Denver),
-        ("PST", Los_Angeles),
-        ("PDT", Los_Angeles),
+        ("EST", -5),
+        ("EDT", -4),
+        ("CDT", -5),
+        ("MST", -7),
+        ("MDT", -6),
+        ("PST", -8),
+        ("PDT", -7),
+        ("AEST", 10),
+        ("AEDT", 11),
+        ("CET", 1),
+        ("CEST", 2),
+        ("NZST", 12),
+        ("NZDT", 13),
+        ("SAST", 2),
     ];
-    for (text, tz) in cases {
-        assert_eq!(zone(text, None), iana(tz), "{text}");
-        assert_eq!(zone(text, Some(Locale::EN_GB)), iana(tz), "{text}");
+    for (text, hours) in cases {
+        assert_eq!(zone(text, None), fixed(hours * 3600), "{text}");
+        assert_eq!(
+            zone(text, Some(Locale::EN_GB)),
+            fixed(hours * 3600),
+            "{text}"
+        );
     }
+}
+
+#[test]
+fn est_in_july_is_not_daylight_time() {
+    let noon = NaiveDate::from_ymd_opt(2026, 7, 1)
+        .and_then(|d| d.and_hms_opt(12, 0, 0))
+        .unwrap();
+    let Some(FoundZone::Fixed(offset)) = zone("EST", None) else {
+        panic!("EST should be fixed");
+    };
+    let utc = offset
+        .from_local_datetime(&noon)
+        .unwrap()
+        .with_timezone(&Utc);
+    assert_eq!(utc.hour(), 17);
+    assert_eq!(local_instant(noon, New_York).single().unwrap().hour(), 16);
+    assert_eq!(zone("ET", Some(Locale::EN_US)), iana(New_York));
 }
 
 #[test]
 fn shorthands_need_a_north_american_region() {
     let cases = [
-        ("ET", New_York),
-        ("CT", Chicago),
-        ("MT", Denver),
-        ("PT", Los_Angeles),
+        ("ET", New_York, [-5, -4]),
+        ("CT", Chicago, [-6, -5]),
+        ("MT", Denver, [-7, -6]),
+        ("PT", Los_Angeles, [-8, -7]),
     ];
-    for (text, tz) in cases {
+    for (text, tz, hours) in cases {
         let at = format!("3pm {text}");
         for locale in [Locale::EN_US, Locale::EN_CA] {
             assert_eq!(zone(&at, Some(locale)), iana(tz), "{at}");
         }
-        assert!(ambiguous(&at, None), "{at}");
-        assert!(ambiguous(&at, Some(Locale::EN_GB)), "{at}");
+        let expected = hours.map(|h| h * 3600).to_vec();
+        for locale in [None, Some(Locale::EN_GB)] {
+            assert_eq!(candidates(&at, locale), expected, "{at}");
+        }
     }
-    assert_eq!(zone("CST", Some(Locale::EN_US)), iana(Chicago));
-    assert_eq!(zone("CST", Some(Locale::EN_CA)), iana(Chicago));
-    assert!(ambiguous("CST", None));
+}
+
+#[test]
+fn cst_depends_on_region() {
+    assert_eq!(zone("CST", Some(Locale::EN_US)), fixed(-6 * 3600));
+    assert_eq!(zone("CST", Some(Locale::EN_CA)), fixed(-6 * 3600));
+    assert_eq!(
+        zone("CST", None),
+        Some(FoundZone::Ambiguous(&[-6 * 3600, 8 * 3600]))
+    );
     assert!(ambiguous("CST", Some(Locale::EN_AU)));
 }
 
 #[test]
 fn bst_and_ist_depend_on_region() {
-    use chrono_tz::{Asia::Kolkata, Europe::Dublin, Europe::London};
-    assert_eq!(zone("BST", Some(Locale::EN_GB)), iana(London));
-    assert_eq!(zone("BST", Some(Locale::EN_IE)), iana(London));
-    assert!(ambiguous("BST", None));
+    assert_eq!(zone("BST", Some(Locale::EN_GB)), fixed(3600));
+    assert_eq!(zone("BST", Some(Locale::EN_IE)), fixed(3600));
+    assert_eq!(
+        zone("BST", None),
+        Some(FoundZone::Ambiguous(&[3600, 6 * 3600]))
+    );
     assert!(ambiguous("BST", Some(Locale::EN_US)));
-    assert_eq!(zone("IST", Some(Locale::EN_IN)), iana(Kolkata));
-    assert_eq!(zone("IST", Some(Locale::EN_IE)), iana(Dublin));
-    assert!(ambiguous("IST", None));
+    assert_eq!(zone("IST", Some(Locale::EN_IN)), fixed(19800));
+    assert_eq!(zone("IST", Some(Locale::EN_IE)), fixed(3600));
+    assert_eq!(candidates("IST", None), [19800, 3600, 7200]);
     assert!(ambiguous("IST", Some(Locale::EN_GB)));
-}
-
-#[test]
-fn other_abbreviations() {
-    use chrono_tz::{Africa::Johannesburg, Australia::Sydney, Europe::Paris, Pacific::Auckland};
-    let cases = [
-        ("AEST", Sydney),
-        ("AEDT", Sydney),
-        ("CET", Paris),
-        ("CEST", Paris),
-        ("NZST", Auckland),
-        ("NZDT", Auckland),
-        ("SAST", Johannesburg),
-    ];
-    for (text, tz) in cases {
-        assert_eq!(zone(text, None), iana(tz), "{text}");
-    }
 }
 
 #[test]

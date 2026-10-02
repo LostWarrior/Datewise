@@ -128,3 +128,26 @@ fn previous_on_or_before_looks_back() {
         Some(d(2030, 10, 3))
     );
 }
+
+#[test]
+fn local_date_handles_chrono_limits() {
+    use chrono_tz::{America::New_York as Ny, Asia::Tokyo, Pacific::Kiritimati};
+    let (min, max) = (NaiveDate::MIN, NaiveDate::MAX);
+    assert_eq!(local_date(i64::MAX, Ny), None);
+    assert_eq!(local_date(i64::MIN, Ny), None);
+    assert_eq!(local_date(8_210_266_876_799_999, Tokyo), None);
+    assert_eq!(local_date(8_210_266_876_799_999, Ny), Some(max));
+    assert_eq!(local_date(8_210_266_876_799_999, Kiritimati), None);
+    assert_eq!(local_date(-8_334_601_228_800_000, Ny), None);
+    assert!(local_date(-8_334_601_228_800_000, Tokyo).is_some_and(|date| date >= min));
+    assert_eq!(local_date(0, Tokyo), Some(d(1970, 1, 1)));
+}
+
+#[test]
+fn local_instant_handles_chrono_limits() {
+    for tz in [New_York, London, chrono_tz::Asia::Tokyo] {
+        for edge in [NaiveDateTime::MIN, NaiveDateTime::MAX] {
+            let _ = local_instant(edge, tz);
+        }
+    }
+}
