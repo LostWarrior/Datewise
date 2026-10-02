@@ -9,14 +9,20 @@ Dependencies:
 
 ```rust
 use chrono::NaiveDate;
-use datewise::locale::Locale;
-use datewise::relative::{parse_relative, Relative, Window};
+use datewise::{ParseError, Parser};
 
 let today = NaiveDate::from_ymd_opt(2026, 10, 2).unwrap();
-let window = Window::new(today, NaiveDate::from_ymd_opt(2026, 12, 31).unwrap()).unwrap();
+let parser = Parser::new("en-GB", today).unwrap();
 
-let uk = parse_relative("03/11/2026", today, window, Some(Locale::EN_GB));
-assert_eq!(uk, Relative::Resolved(NaiveDate::from_ymd_opt(2026, 11, 3).unwrap()));
+assert_eq!(parser.parse("03/11/2026").unwrap().to_string(), "2026-11-03");
+assert_eq!(parser.parse("tomorrow at 3pm").unwrap().to_string(), "2026-10-03T15:00:00");
+assert_eq!(parser.parse("Friday 9am BST").unwrap().to_string(), "2026-10-02T09:00:00+01:00");
+assert_eq!(parser.parse("next week").unwrap().to_string(), "2026-10-05/2026-10-11");
+assert_eq!(parser.prefer_past().parse("3 March").unwrap().to_string(), "2026-03-03");
+assert_eq!(parser.parse("tomorrow-ish"), Err(ParseError::Unparsed));
 ```
+
+`Parser` matches the whole input. To pull dates and times out of free text, use the finders in
+`datewise::fields`; `datewise::relative` and `datewise::resolve` expose the lower-level pieces.
 
 Licensed under MIT or Apache-2.0, at your option.

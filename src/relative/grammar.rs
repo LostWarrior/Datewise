@@ -1,19 +1,25 @@
 use crate::fields::{find_numeric_date, iso_date};
 use crate::locale::Locale;
 use crate::names::{month_from_name, ordinal_suffix_len, weekday_from_name};
+use crate::resolve::YearMode;
 use crate::scan::{digits, within_limit, year, YEAR_DIGITS};
 use chrono::{Datelike, Days, NaiveDate, Weekday};
 
 const MAX_TOKENS: usize = 6;
 
-pub(super) enum Parsed {
+pub(crate) enum Parsed {
     Date(NaiveDate),
     Span(NaiveDate, NaiveDate),
     Numeric(Vec<NaiveDate>),
     YearlessDay { day: u32, month: u32 },
 }
 
-pub(super) fn parse(text: &str, today: NaiveDate, locale: Option<Locale>) -> Option<Parsed> {
+pub(crate) fn parse(
+    text: &str,
+    today: NaiveDate,
+    locale: Option<Locale>,
+    mode: YearMode,
+) -> Option<Parsed> {
     if !within_limit(text) {
         return None;
     }
@@ -36,7 +42,7 @@ pub(super) fn parse(text: &str, today: NaiveDate, locale: Option<Locale>) -> Opt
         }
     }
     match tokens {
-        [one] => single(one, today, locale),
+        [one] => single(one, today, locale, mode),
         [word, target] if is(word, "next") => next_target(target, today, week_start(locale)),
         [word, target] if is(word, "this") && is(target, "week") => {
             week_span(today, week_start(locale), 0)
@@ -53,7 +59,7 @@ fn date(date: Option<NaiveDate>) -> Option<Parsed> {
     date.map(Parsed::Date)
 }
 
-fn single(token: &str, today: NaiveDate, locale: Option<Locale>) -> Option<Parsed> {
+fn single(token: &str, today: NaiveDate, locale: Option<Locale>, mode: YearMode) -> Option<Parsed> {
     if is(token, "today") {
         return date(Some(today));
     }
@@ -64,8 +70,14 @@ fn single(token: &str, today: NaiveDate, locale: Option<Locale>) -> Option<Parse
         return date(today.checked_sub_days(Days::new(1)));
     }
     if let Some(weekday) = weekday_from_name(token) {
-        let ahead = days_between(today.weekday(), weekday);
-        return date(today.checked_add_days(Days::new(ahead)));
+        return date(match mode {
+            YearMode::PreviousOnOrBefore => {
+                today.checked_sub_days(Days::new(days_between(weekday, today.weekday())))
+            }
+            YearMode::NextOnOrAfter => {
+                today.checked_add_days(Days::new(days_between(today.weekday(), weekday)))
+            }
+        });
     }
     if let Some(iso) = iso_date(token) {
         return date(Some(iso));
@@ -74,7 +86,7 @@ fn single(token: &str, today: NaiveDate, locale: Option<Locale>) -> Option<Parse
     if let Some(found) = find_numeric_date(token, order).filter(|f| f.span.len() == token.len()) {
         return Some(Parsed::Numeric(found.dates));
     }
-    day_of_month(parse_day(token, true)?, today)
+    day_of_month(parse_day(token, true)?, today, mode)
 }
 
 fn next_target(target: &str, today: NaiveDate, start: Weekday) -> Option<Parsed> {
@@ -103,15 +115,22 @@ fn days_between(from: Weekday, to: Weekday) -> u64 {
     u64::from((7 + to.num_days_from_monday() - from.num_days_from_monday()) % 7)
 }
 
-fn day_of_month(day: u32, today: NaiveDate) -> Option<Parsed> {
+fn day_of_month(day: u32, today: NaiveDate, mode: YearMode) -> Option<Parsed> {
     let base = today.year() * 12 + i32::try_from(today.month0()).ok()?;
+    let past = mode == YearMode::PreviousOnOrBefore;
     (0..=12)
         .filter_map(|k| {
-            let months = base + k;
+            let months = if past { base - k } else { base + k };
             let month = u32::try_from(months.rem_euclid(12)).ok()? + 1;
             NaiveDate::from_ymd_opt(months.div_euclid(12), month, day)
         })
-        .find(|candidate| *candidate >= today)
+        .find(|candidate| {
+            if past {
+                *candidate <= today
+            } else {
+                *candidate >= today
+            }
+        })
         .map(Parsed::Date)
 }
 

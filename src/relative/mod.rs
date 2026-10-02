@@ -11,7 +11,7 @@
 //! - `3rd October`, `October 3rd`, `3 Oct`, with an optional year
 //! - ISO dates such as `2026-10-03`
 
-mod grammar;
+pub(crate) mod grammar;
 
 use crate::locale::Locale;
 use chrono::{Datelike, NaiveDate};
@@ -84,7 +84,7 @@ pub fn parse_relative(
     window: Window,
     locale: Option<Locale>,
 ) -> Relative {
-    match grammar::parse(text, today, locale) {
+    match grammar::parse(text, today, locale, crate::resolve::YearMode::NextOnOrAfter) {
         Some(grammar::Parsed::Date(date)) => place(date, window),
         Some(grammar::Parsed::Span(first, last)) => {
             if window.start() <= last && first <= window.end() {

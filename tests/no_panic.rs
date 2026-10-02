@@ -7,6 +7,7 @@ use datewise::names::{month_from_name, ordinal_suffix_len, weekday_from_name};
 use datewise::relative::{parse_relative, Window};
 use datewise::resolve::{local_instant, resolve_date, YearMode};
 use datewise::zone::{find_zone, local_date, parse_zone};
+use datewise::Parser;
 
 const FRAGMENTS: &[&str] = &[
     "jan",
@@ -124,6 +125,13 @@ fn exercise(text: &str, today: NaiveDate, window: Window) {
         let _ = find_numeric_date(text, Some(order));
     }
     let _ = Locale::from_tag(text);
+    let _ = Parser::new(text, today);
+    for tag in ["en-GB", "en-US", "en-CA", "en-IN"] {
+        if let Ok(parser) = Parser::new(tag, today) {
+            let _ = parser.parse(text);
+            let _ = parser.within(window).prefer_past().parse(text);
+        }
+    }
 }
 
 #[test]
