@@ -1,5 +1,3 @@
-//! Low-level token scanners shared by the parsers.
-
 use crate::MAX_INPUT_BYTES;
 
 pub(crate) const YEAR_DIGITS: usize = 4;
@@ -25,6 +23,11 @@ pub(crate) fn year(s: &str) -> Option<i32> {
     } else {
         None
     }
+}
+
+pub(crate) fn century(two_digits: u32) -> Option<i32> {
+    let base = if two_digits < 69 { 2000 } else { 1900 };
+    i32::try_from(two_digits).ok().map(|yy| base + yy)
 }
 
 pub(crate) fn boundary(s: &str) -> bool {

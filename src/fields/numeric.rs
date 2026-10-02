@@ -1,20 +1,16 @@
 use crate::locale::DateOrder;
-use crate::scan::{clear_after, clear_before, digits, is_sep};
+use crate::scan::{century, clear_after, clear_before, digits, is_sep};
 use chrono::NaiveDate;
 use std::ops::Range;
-
-const TWO_DIGIT_YEAR_BASE: i32 = 2000;
 
 /// A numeric date such as `03/10/2026` found in text.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct NumericDate {
-    /// Byte range of the whole date.
     pub span: Range<usize>,
-    /// The valid readings: one, or two (day-first then month-first) when the order is unknown.
     pub dates: Vec<NaiveDate>,
 }
 
-/// Finds the first numeric date; two-digit years are read as 2000-2099.
+/// Finds the first numeric date; two-digit years `00`-`68` are 2000-2068, `69`-`99` are 1969-1999.
 #[must_use]
 pub fn find_numeric_date(text: &str, order: Option<DateOrder>) -> Option<NumericDate> {
     text.char_indices()
@@ -40,9 +36,7 @@ pub(super) fn numeric_at(
     let dates = match (a_len, c_len) {
         (4, 1 | 2) if !dashed => vec![NaiveDate::from_ymd_opt(i32::try_from(a).ok()?, b, c)?],
         (1 | 2, 4) => readings(i32::try_from(c).ok()?, a, b, order),
-        (1 | 2, 2) if !dashed => {
-            readings(TWO_DIGIT_YEAR_BASE + i32::try_from(c).ok()?, a, b, order)
-        }
+        (1 | 2, 2) if !dashed => readings(century(c)?, a, b, order),
         _ => return None,
     };
     (!dates.is_empty()).then(|| NumericDate {

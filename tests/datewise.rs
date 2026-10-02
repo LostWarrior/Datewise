@@ -102,7 +102,6 @@ fn yearless_dates_are_unlimited_without_a_window() {
 fn yearless_dates_take_the_nearest_year_then_check_the_window() {
     let p = gb().within("2026-10-01", "2026-12-31").unwrap();
     assert_eq!(p.parse("3 March"), Err(ParseError::OutOfWindow));
-    // No skipping ahead to a later year that would fit.
     let later = gb().within("2027-06-01", "2028-12-31").unwrap();
     assert_eq!(later.parse("3 March"), Err(ParseError::OutOfWindow));
     let fits = gb().within("2027-01-01", "2028-12-31").unwrap();
@@ -304,7 +303,7 @@ fn ambiguous_zones_and_dates_list_every_reading() {
             Parsed::DateTime(dt(2026, 3, 4, 15, 0)),
         ]))
     );
-    let april = canada.within("2026-04-01", "2026-04-30").unwrap();
+    let april = canada.clone().within("2026-04-01", "2026-04-30").unwrap();
     assert_eq!(april.parse("03/04/2026"), Ok(Parsed::Date(d(2026, 4, 3))));
     let summer = canada.within("2026-06-01", "2026-08-31").unwrap();
     assert_eq!(summer.parse("03/04/2026"), Err(ParseError::OutOfWindow));

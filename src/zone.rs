@@ -1,5 +1,3 @@
-//! Time zone parsing and zone-aware civil dates.
-
 mod abbrev;
 
 use crate::locale::Locale;
@@ -25,10 +23,6 @@ impl fmt::Display for ZoneError {
 impl std::error::Error for ZoneError {}
 
 /// Parses an IANA zone name.
-///
-/// # Errors
-///
-/// [`ZoneError`] if the name is unknown.
 pub fn parse_zone(name: &str) -> Result<Tz, ZoneError> {
     if !within_limit(name) {
         return Err(ZoneError);
@@ -52,20 +46,15 @@ pub fn local_date(epoch_ms: i64, tz: Tz) -> Option<NaiveDate> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[non_exhaustive]
 pub enum FoundZone {
-    /// A region-aware zone, used for seasonless shorthands such as `ET`.
     Iana(Tz),
-    /// A fixed offset from UTC; `EST` and `EDT` keep their literal offsets.
     Fixed(FixedOffset),
-    /// The text has several meanings here: candidate UTC offsets in seconds east, most likely first.
     Ambiguous(&'static [i32]),
 }
 
 /// A zone found in text.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct ZoneMatch {
-    /// Byte range of the zone text.
     pub span: Range<usize>,
-    /// What it means.
     pub zone: FoundZone,
 }
 
@@ -151,7 +140,6 @@ fn colons_before(text: &str, pos: usize) -> usize {
     })
 }
 
-// `bare` rejects `+h`, which needs a UTC/GMT prefix.
 fn signed(s: &str, bare: bool) -> Option<(usize, FixedOffset)> {
     let sign = match s.chars().next()? {
         '+' => 1,

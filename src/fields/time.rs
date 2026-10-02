@@ -6,20 +6,15 @@ use std::ops::Range;
 /// A clock time with an explicit `am`/`pm`, found in text.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct TimeOfDay {
-    /// Byte range of the time including its meridiem.
     pub span: Range<usize>,
-    /// The time on the 24-hour clock.
     pub time: NaiveTime,
 }
 
 /// A start and end time found in text, with meridiems resolved.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct TimeRange {
-    /// Byte range from the start time to the end of the end time.
     pub span: Range<usize>,
-    /// Start of the range.
     pub start: NaiveTime,
-    /// End of the range.
     pub end: NaiveTime,
 }
 
@@ -27,7 +22,6 @@ pub struct TimeRange {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[non_exhaustive]
 pub enum TimeError {
-    /// Neither reading of the missing meridiem gives an ascending range.
     AmbiguousMeridiem,
 }
 
@@ -61,10 +55,6 @@ pub fn find_time(text: &str) -> Option<TimeOfDay> {
 }
 
 /// Finds the first `7 - 8pm` style range, taking a missing meridiem from the other side.
-///
-/// # Errors
-///
-/// [`TimeError::AmbiguousMeridiem`] if the range cannot ascend.
 pub fn find_time_range(text: &str) -> Result<Option<TimeRange>, TimeError> {
     for (start, _) in text.char_indices() {
         if !clock_start(text, start) {

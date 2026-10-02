@@ -1,5 +1,3 @@
-//! Finders that locate dates and times inside free text of any length.
-
 mod date;
 mod found;
 mod numeric;

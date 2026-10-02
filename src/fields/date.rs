@@ -6,15 +6,10 @@ use std::ops::Range;
 /// A `<day><suffix> <Month>[ <year>]` phrase found in text.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct OrdinalDate {
-    /// Byte range from the day number to the end of the month or year.
     pub span: Range<usize>,
-    /// Day of month, 1-31.
     pub day: u32,
-    /// Month, 1-12.
     pub month: u32,
-    /// Year, when four digits directly follow the month.
     pub year: Option<i32>,
-    /// Weekday name written immediately before the day, if any.
     pub weekday: Option<Weekday>,
 }
 

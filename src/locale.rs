@@ -1,5 +1,3 @@
-//! English regional conventions: numeric date order and first day of the week.
-
 use crate::scan::within_limit;
 use chrono::Weekday;
 
@@ -7,11 +5,8 @@ use chrono::Weekday;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[non_exhaustive]
 pub enum DateOrder {
-    /// Day, month, year: `03/10/2026` is 3 October.
     DayFirst,
-    /// Month, day, year: `03/10/2026` is 10 March.
     MonthFirst,
-    /// Year first (`2026/10/03`); other numeric orders are not decided by the locale.
     YearFirst,
 }
 

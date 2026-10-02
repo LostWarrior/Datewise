@@ -117,7 +117,11 @@ fn year_first_and_other_separators() {
     assert_eq!(parse("3.10.2026", gb), Relative::Resolved(d(2026, 10, 3)));
     assert_eq!(parse("3-10-2026", gb), Relative::Resolved(d(2026, 10, 3)));
     assert_eq!(parse("on 3/10/26.", gb), Relative::Resolved(d(2026, 10, 3)));
-    assert_eq!(parse("3/10/99", gb), Relative::OutOfWindow(d(2099, 10, 3)));
+    assert_eq!(parse("3/10/99", gb), Relative::OutOfWindow(d(1999, 10, 3)));
+    assert_eq!(parse("3/10/68", gb), Relative::OutOfWindow(d(2068, 10, 3)));
+    assert_eq!(parse("3/10/69", gb), Relative::OutOfWindow(d(1969, 10, 3)));
+    assert_eq!(parse("03/10/70", gb), Relative::OutOfWindow(d(1970, 10, 3)));
+    assert_eq!(parse("29/02/00", gb), Relative::OutOfWindow(d(2000, 2, 29)));
     for bad in [
         "3-10-26",
         "26/10/03/1",

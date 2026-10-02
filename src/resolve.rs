@@ -1,18 +1,13 @@
-//! Turning parsed fields into concrete dates and instants.
-
 use chrono::{DateTime, Datelike, LocalResult, NaiveDate, NaiveDateTime, TimeZone, Utc};
 use chrono_tz::Tz;
 
-// Search distance in either direction; spans the longest gap between leap days (2096 to 2104).
 const MAX_LOOKAHEAD_YEARS: i32 = 8;
 
 /// How a missing year is inferred.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[non_exhaustive]
 pub enum YearMode {
-    /// First occurrence on or after the anchor; a leap day waits for the next leap year.
     NextOnOrAfter,
-    /// Latest occurrence on or before the anchor; a leap day reaches back to the last leap year.
     PreviousOnOrBefore,
 }
 
@@ -48,11 +43,8 @@ pub fn resolve_date(
 /// A local wall-clock time placed in a time zone.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum LocalInstant {
-    /// Exactly one matching instant.
     Single(DateTime<Utc>),
-    /// The time does not exist (clocks skipped forward).
     Gap,
-    /// The time occurs twice (clocks moved back): earlier, then later.
     Ambiguous(DateTime<Utc>, DateTime<Utc>),
 }
 
@@ -68,16 +60,6 @@ impl LocalInstant {
 }
 
 /// Resolves a local date and time in `tz` to UTC, reporting DST gaps and folds.
-///
-/// ```
-/// use chrono::NaiveDate;
-/// use chrono_tz::Europe::London;
-/// use datewise::resolve::{local_instant, LocalInstant};
-///
-/// let spring = NaiveDate::from_ymd_opt(2026, 3, 29).unwrap();
-/// let missing = spring.and_hms_opt(1, 30, 0).unwrap();
-/// assert_eq!(local_instant(missing, London), LocalInstant::Gap);
-/// ```
 #[must_use]
 pub fn local_instant(local: NaiveDateTime, tz: Tz) -> LocalInstant {
     match tz.from_local_datetime(&local) {

@@ -1,9 +1,6 @@
-//! English month and weekday names, and ordinal suffixes.
-
 use crate::scan::boundary;
 use chrono::Weekday;
 
-// Longest spelling first within each entry group.
 pub(crate) const MONTHS: &[(&str, u32)] = &[
     ("january", 1),
     ("jan", 1),
@@ -31,7 +28,7 @@ pub(crate) const MONTHS: &[(&str, u32)] = &[
     ("dec", 12),
 ];
 
-const WEEKDAYS: &[(&str, Weekday)] = &[
+pub(crate) const WEEKDAYS: &[(&str, Weekday)] = &[
     ("monday", Weekday::Mon),
     ("mon", Weekday::Mon),
     ("tuesday", Weekday::Tue),
@@ -67,6 +64,21 @@ pub fn weekday_from_name(name: &str) -> Option<Weekday> {
         .iter()
         .find(|(n, _)| n.eq_ignore_ascii_case(name))
         .map(|&(_, day)| day)
+}
+
+pub(crate) fn full_name_prefix<T: Copy + PartialEq>(
+    table: &[(&str, T)],
+    s: &str,
+) -> Option<(T, usize)> {
+    table
+        .iter()
+        .enumerate()
+        .filter(|&(i, (_, value))| table.iter().position(|(_, v)| v == value) == Some(i))
+        .find_map(|(_, &(name, value))| {
+            let head = s.get(..name.len())?;
+            head.eq_ignore_ascii_case(name)
+                .then_some((value, name.len()))
+        })
 }
 
 /// Length (2) of a leading `st`/`nd`/`rd`/`th` not followed by a letter.

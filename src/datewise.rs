@@ -1,5 +1,6 @@
 use crate::fields::{find_time, iso_date};
 use crate::locale::Locale;
+use crate::pattern::Pattern;
 use crate::relative::grammar::{self, Parsed as Phrase};
 use crate::relative::Window;
 use crate::resolve::{local_instant, resolve_date, LocalInstant, YearMode};
@@ -12,12 +13,10 @@ use std::fmt;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[non_exhaustive]
 pub enum ConfigError {
-    /// The locale tag is not a supported English region such as `en-GB`.
     UnknownLocale,
-    /// A date is not a valid `YYYY-MM-DD`.
     InvalidDate,
-    /// The window's start is after its end.
     InvalidWindow,
+    UnsupportedPattern,
 }
 
 impl fmt::Display for ConfigError {
@@ -26,6 +25,7 @@ impl fmt::Display for ConfigError {
             ConfigError::UnknownLocale => "unknown or unsupported locale tag",
             ConfigError::InvalidDate => "date is not a valid YYYY-MM-DD",
             ConfigError::InvalidWindow => "window start is after its end",
+            ConfigError::UnsupportedPattern => "unsupported date pattern",
         })
     }
 }
@@ -36,13 +36,9 @@ impl std::error::Error for ConfigError {}
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 #[non_exhaustive]
 pub enum ParseError {
-    /// The whole text is not a supported phrase.
     Unparsed,
-    /// Several readings are valid, in order of preference.
     Ambiguous(Vec<Parsed>),
-    /// The phrase is clear but falls outside the window.
     OutOfWindow,
-    /// The local time is skipped by a daylight saving change.
     NonexistentLocalTime,
 }
 
@@ -59,17 +55,28 @@ impl fmt::Display for ParseError {
 
 impl std::error::Error for ParseError {}
 
+/// A value could not be formatted.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[non_exhaustive]
+pub enum FormatError {
+    MissingField,
+}
+
+impl fmt::Display for FormatError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("value lacks a field the pattern needs")
+    }
+}
+
+impl std::error::Error for FormatError {}
+
 /// A parsed phrase; `Display` writes ISO 8601.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[non_exhaustive]
 pub enum Parsed {
-    /// A calendar date: `2026-10-03`.
     Date(NaiveDate),
-    /// A local date and time with no zone: `2026-10-03T15:00:00`.
     DateTime(NaiveDateTime),
-    /// A moment with its UTC offset: `2026-10-03T15:00:00+01:00`.
     Instant(DateTime<FixedOffset>),
-    /// First and last day, inclusive: `2026-10-05/2026-10-11`.
     DateSpan(NaiveDate, NaiveDate),
 }
 
@@ -129,13 +136,24 @@ impl fmt::Display for Parsed {
     }
 }
 
-/// Parses whole phrases such as `tomorrow at 3pm ET` relative to a fixed `today`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+/// Parses and formats dates, either as phrases relative to `today` or with a fixed pattern.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Datewise {
+    mode: Mode,
+    window: Option<Window>,
+    year: YearMode,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+enum Mode {
+    Phrases(Phrases),
+    Pattern(Pattern),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+struct Phrases {
     locale: Locale,
     today: NaiveDate,
-    window: Option<Window>,
-    mode: YearMode,
 }
 
 impl Datewise {
@@ -146,57 +164,89 @@ impl Datewise {
     ///
     /// let dw = Datewise::new("en-GB", "2026-10-02")?;
     /// assert_eq!(dw.parse("next friday")?.to_string(), "2026-10-09");
-    /// assert_eq!(dw.parse("tomorrow at 3pm")?.to_string(), "2026-10-03T15:00:00");
     /// # Ok::<(), Box<dyn std::error::Error>>(())
     /// ```
-    ///
-    /// # Errors
-    ///
-    /// [`ConfigError::UnknownLocale`] for an unsupported tag, [`ConfigError::InvalidDate`] for a bad `today`.
     pub fn new(locale_tag: &str, today: &str) -> Result<Self, ConfigError> {
         let locale = Locale::from_tag(locale_tag).ok_or(ConfigError::UnknownLocale)?;
         let today = date_arg(today)?;
-        Ok(Self {
-            locale,
-            today,
+        Ok(Self::with(Mode::Phrases(Phrases { locale, today })))
+    }
+
+    /// Parses and formats exactly `pattern`; other non-letters are literal:
+    ///
+    /// - `yyyy`, `yy` (`00`-`68` → 2000s, `69`-`99` → 1900s; use `yyyy` for 2069+)
+    /// - `M`, `MM`, `MMM`, `MMMM`, `d`, `dd`, `E`/`EEE`, `EEEE`
+    /// - `H`, `HH`, `h`, `hh`, `a`, `m`, `mm`, `s`, `ss`, `XXX` (`Z` for zero), `'text'`, `''`
+    ///
+    /// ```
+    /// use datewise::Datewise;
+    ///
+    /// let p = Datewise::pattern("dd/MM/yyyy")?;
+    /// let d = p.parse("03/11/2026")?;
+    /// assert_eq!(Datewise::pattern("yyyy-MM-dd")?.format(&d)?, "2026-11-03");
+    /// # Ok::<(), Box<dyn std::error::Error>>(())
+    /// ```
+    pub fn pattern(pattern: &str) -> Result<Self, ConfigError> {
+        let pattern = Pattern::new(pattern).ok_or(ConfigError::UnsupportedPattern)?;
+        Ok(Self::with(Mode::Pattern(pattern)))
+    }
+
+    fn with(mode: Mode) -> Self {
+        Self {
+            mode,
             window: None,
-            mode: YearMode::NextOnOrAfter,
-        })
+            year: YearMode::NextOnOrAfter,
+        }
     }
 
     /// Rejects dates outside `start..=end` (`YYYY-MM-DD`); spans need only overlap it.
-    ///
-    /// # Errors
-    ///
-    /// [`ConfigError::InvalidDate`] for a bad date, [`ConfigError::InvalidWindow`] when `start` is after `end`.
     pub fn within(mut self, start: &str, end: &str) -> Result<Self, ConfigError> {
         let window = Window::new(date_arg(start)?, date_arg(end)?);
         self.window = Some(window.ok_or(ConfigError::InvalidWindow)?);
         Ok(self)
     }
 
-    /// Reads bare weekdays, `the 14th` and yearless dates as on or before today.
+    /// Reads bare weekdays, `the 14th` and yearless dates as on or before today; patterns ignore it.
     #[must_use]
     pub fn prefer_past(mut self) -> Self {
-        self.mode = YearMode::PreviousOnOrBefore;
+        self.year = YearMode::PreviousOnOrBefore;
         self
     }
 
     /// Parses the whole of `text`.
-    ///
-    /// # Errors
-    ///
-    /// A [`ParseError`] when the text is unsupported, ambiguous, outside the window or skipped by DST.
     pub fn parse(&self, text: &str) -> Result<Parsed, ParseError> {
         if !within_limit(text) {
             return Err(ParseError::Unparsed);
         }
+        match &self.mode {
+            Mode::Phrases(phrases) => self.phrase(*phrases, text),
+            Mode::Pattern(pattern) => {
+                let parsed = pattern.parse(text).ok_or(ParseError::Unparsed)?;
+                let date = match parsed {
+                    Parsed::Instant(instant) => instant.date_naive(),
+                    Parsed::DateTime(local) => local.date(),
+                    _ => parsed.as_date().ok_or(ParseError::Unparsed)?,
+                };
+                self.checked(vec![date]).map(|_| parsed)
+            }
+        }
+    }
+
+    /// Writes `value` with the pattern, or as ISO 8601 (like `Display`) in phrase mode.
+    pub fn format(&self, value: &Parsed) -> Result<String, FormatError> {
+        match &self.mode {
+            Mode::Phrases(_) => Ok(value.to_string()),
+            Mode::Pattern(pattern) => pattern.format(value).ok_or(FormatError::MissingField),
+        }
+    }
+
+    fn phrase(&self, phrases: Phrases, text: &str) -> Result<Parsed, ParseError> {
         let Some(found) = find_time(text) else {
-            return self.dates(text).and_then(Self::date_only);
+            return self.dates(phrases, text).and_then(Self::date_only);
         };
         let head = text.get(..found.span.start).unwrap_or_default();
         let mut tail = text.get(found.span.end..).unwrap_or_default();
-        let zone = find_zone(tail, Some(self.locale))
+        let zone = find_zone(tail, Some(phrases.locale))
             .filter(|z| {
                 tail.get(..z.span.start)
                     .is_some_and(|gap| gap.trim().is_empty())
@@ -207,9 +257,9 @@ impl Datewise {
             });
         let head = strip_at(head);
         let dates = match (head.trim().is_empty(), tail.trim().is_empty()) {
-            (true, true) => self.checked(vec![self.today])?,
-            (true, false) => self.dates(tail)?.dated()?,
-            (false, true) => self.dates(head)?.dated()?,
+            (true, true) => self.checked(vec![phrases.today])?,
+            (true, false) => self.dates(phrases, tail)?.dated()?,
+            (false, true) => self.dates(phrases, head)?.dated()?,
             (false, false) => return Err(ParseError::Unparsed),
         };
         let mut readings = Vec::new();
@@ -224,15 +274,16 @@ impl Datewise {
         one_of(readings, gap)
     }
 
-    fn dates(&self, text: &str) -> Result<Dates, ParseError> {
-        let phrase = grammar::parse(text, self.today, Some(self.locale), self.mode)
-            .ok_or(ParseError::Unparsed)?;
+    fn dates(&self, phrases: Phrases, text: &str) -> Result<Dates, ParseError> {
+        let Phrases { locale, today } = phrases;
+        let phrase =
+            grammar::parse(text, today, Some(locale), self.year).ok_or(ParseError::Unparsed)?;
         Ok(match phrase {
             Phrase::Date(date) => Dates::Days(self.checked(vec![date])?),
             Phrase::Numeric(dates) => Dates::Days(self.checked(dates)?),
             Phrase::YearlessDay { day, month } => {
-                let date = resolve_date(day, month, None, self.today, self.mode)
-                    .ok_or(ParseError::Unparsed)?;
+                let date =
+                    resolve_date(day, month, None, today, self.year).ok_or(ParseError::Unparsed)?;
                 Dates::Days(self.checked(vec![date])?)
             }
             Phrase::Span(first, last) => {

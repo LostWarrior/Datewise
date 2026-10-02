@@ -1,16 +1,3 @@
-//! Relative and calendar phrases resolved against a reference date.
-//!
-//! Case, spacing, punctuation and a leading `on` are ignored. Supported:
-//!
-//! - `today`, `tomorrow`, `yesterday`
-//! - `Friday`: the first such day on or after today
-//! - `next Tuesday`: that weekday in the following week (weeks start per the locale, else Monday)
-//! - `this week`, `next week`: that whole week as a span (may start before today)
-//! - `03/10/2026`, `3/10/26`, `3.10.2026`, `2026/10/03`: numeric dates, ordered by the locale
-//! - `the 14th`: the next 14th on or after today, skipping shorter months
-//! - `3rd October`, `October 3rd`, `3 Oct`, with an optional year
-//! - ISO dates such as `2026-10-03`
-
 pub(crate) mod grammar;
 
 use crate::locale::Locale;
@@ -53,30 +40,14 @@ impl Window {
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 #[non_exhaustive]
 pub enum Relative {
-    /// A single date inside the window.
     Resolved(NaiveDate),
-    /// A whole week, first to last day inclusive, overlapping the window.
     Span(NaiveDate, NaiveDate),
-    /// The phrase is clear but its date falls outside the window.
     OutOfWindow(NaiveDate),
-    /// Several readings fall in the window.
     Ambiguous(Vec<NaiveDate>),
-    /// The text is not a supported phrase.
     Unparsed,
 }
 
 /// Parses `text` relative to `today` and checks it against `window`; `locale` sets order and week start.
-///
-/// ```
-/// use chrono::{Datelike, NaiveDate};
-/// use datewise::relative::{parse_relative, Relative, Window};
-///
-/// let today = NaiveDate::from_ymd_opt(2026, 10, 2).unwrap();
-/// let window = Window::new(today, NaiveDate::from_ymd_opt(2026, 12, 31).unwrap()).unwrap();
-/// let oct_3 = NaiveDate::from_ymd_opt(2026, 10, 3).unwrap();
-/// assert_eq!(parse_relative("On 3rd October", today, window, None), Relative::Resolved(oct_3));
-/// assert_eq!(parse_relative("whenever", today, window, None), Relative::Unparsed);
-/// ```
 #[must_use]
 pub fn parse_relative(
     text: &str,

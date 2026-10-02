@@ -10,29 +10,15 @@ const LEAP_YEAR: i32 = 2000;
 /// A date phrase found in text.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct FoundDate {
-    /// Byte range of the date, excluding any weekday before it.
     pub span: Range<usize>,
-    /// Day of month, 1-31.
     pub day: u32,
-    /// Month, 1-12.
     pub month: u32,
-    /// Year, when written; numeric dates always have one.
     pub year: Option<i32>,
-    /// Weekday name written immediately before the date, if any.
     pub weekday: Option<Weekday>,
-    /// A numeric date whose order is unknown: swapping `day` and `month` is also valid.
     pub ambiguous: bool,
 }
 
 /// Finds the first date phrase (ordinal, month-name, numeric or ISO); `locale` fixes numeric order.
-///
-/// ```
-/// use datewise::fields::find_date;
-///
-/// let found = find_date("Fri 3 October 2026, 3 people", None).unwrap();
-/// assert_eq!((found.day, found.month, found.year), (3, 10, Some(2026)));
-/// assert!(find_date("May I march on 3 people", None).is_none());
-/// ```
 #[must_use]
 pub fn find_date(text: &str, locale: Option<Locale>) -> Option<FoundDate> {
     let order = locale.map(|l| l.date_order());

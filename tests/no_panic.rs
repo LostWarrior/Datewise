@@ -7,7 +7,7 @@ use datewise::names::{month_from_name, ordinal_suffix_len, weekday_from_name};
 use datewise::relative::{parse_relative, Window};
 use datewise::resolve::{local_instant, resolve_date, YearMode};
 use datewise::zone::{find_zone, local_date, parse_zone};
-use datewise::Datewise;
+use datewise::{Datewise, Parsed};
 
 const FRAGMENTS: &[&str] = &[
     "jan",
@@ -65,6 +65,24 @@ const FRAGMENTS: &[&str] = &[
     "ET",
     "UTC-",
     "7pm-8",
+    "yyyy",
+    "MMM",
+    "EEEE",
+    "hh:mm a",
+    "XXX",
+    "'",
+    "''",
+    "Z",
+    "+01:00",
+];
+
+const PATTERNS: &[&str] = &[
+    "dd/MM/yyyy",
+    "d/M/yy",
+    "EEE d MMM yyyy hh:mm a",
+    "EEEE, MMMM d, yyyy H:m:s",
+    "yyyy-MM-dd'T'HH:mm:ssXXX",
+    "''HH",
 ];
 
 struct Lcg(u64);
@@ -131,9 +149,21 @@ fn exercise(text: &str, today: NaiveDate, window: Window) {
     for tag in ["en-GB", "en-US", "en-CA", "en-IN"] {
         if let Ok(dw) = Datewise::new(tag, &iso) {
             let _ = dw.parse(text);
-            let _ = dw.within(text, &iso);
+            let _ = dw.clone().within(text, &iso);
             if let Ok(wide) = dw.within("0000-01-01", "9999-12-31") {
                 let _ = wide.prefer_past().parse(text);
+            }
+        }
+    }
+    if let Ok(custom) = Datewise::pattern(text) {
+        let _ = custom.parse(text);
+        let _ = custom.format(&Parsed::Date(today));
+    }
+    for pattern in PATTERNS {
+        if let Ok(fixed) = Datewise::pattern(pattern) {
+            let _ = fixed.parse(text);
+            if let Ok(parsed) = fixed.parse(&format!("{text}{text}")) {
+                let _ = fixed.format(&parsed);
             }
         }
     }
