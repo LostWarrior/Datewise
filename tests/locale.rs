@@ -6,7 +6,6 @@ fn d(y: i32, m: u32, day: u32) -> NaiveDate {
     NaiveDate::from_ymd_opt(y, m, day).unwrap()
 }
 
-// Friday 2 October 2026.
 fn parse(text: &str, locale: Option<Locale>) -> Relative {
     let window = Window::new(d(2026, 1, 1), d(2027, 12, 31)).unwrap();
     parse_relative(text, d(2026, 10, 2), window, locale)

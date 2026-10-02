@@ -1,5 +1,6 @@
 //! English regional conventions: numeric date order and first day of the week.
 
+use crate::scan::within_limit;
 use chrono::Weekday;
 
 /// Order of the day, month and year fields in a numeric date.
@@ -68,6 +69,9 @@ impl Locale {
     /// Builds a locale from `en-GB` or `en_GB` (any case); the region is required.
     #[must_use]
     pub fn from_tag(tag: &str) -> Option<Locale> {
+        if !within_limit(tag) {
+            return None;
+        }
         let mut parts = tag.split(['-', '_']);
         let (lang, region) = (parts.next()?, parts.next()?);
         if parts.next().is_some() || !lang.eq_ignore_ascii_case("en") {

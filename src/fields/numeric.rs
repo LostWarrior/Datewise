@@ -1,9 +1,8 @@
 use crate::locale::DateOrder;
-use crate::scan::{digits, within_limit};
+use crate::scan::{clear_after, clear_before, digits, is_sep};
 use chrono::NaiveDate;
 use std::ops::Range;
 
-// Two-digit years map to 2000-2099.
 const TWO_DIGIT_YEAR_BASE: i32 = 2000;
 
 /// A numeric date such as `03/10/2026` found in text.
@@ -15,43 +14,18 @@ pub struct NumericDate {
     pub dates: Vec<NaiveDate>,
 }
 
-/// Finds the first `d/m/y`, `m/d/y` or `y/m/d` date with `/`, `.` or `-` separators.
-///
-/// A four-digit first field is year-first and ignores `order`. Otherwise `None` as
-/// `order` (or `YearFirst`) returns every valid reading; a fixed order returns one.
-/// Two-digit years need `/` or `.`; year-first needs `/` or `.` (use ISO for `-`).
+/// Finds the first numeric date; two-digit years are read as 2000-2099.
 #[must_use]
 pub fn find_numeric_date(text: &str, order: Option<DateOrder>) -> Option<NumericDate> {
-    if !within_limit(text) {
-        return None;
-    }
     text.char_indices()
         .find_map(|(start, _)| numeric_at(text, start, order))
 }
 
-fn is_sep(c: char) -> bool {
-    matches!(c, '/' | '.' | '-')
-}
-
-fn clear_before(text: &str, pos: usize) -> Option<()> {
-    let mut back = text.get(..pos)?.chars().rev();
-    match (back.next(), back.next()) {
-        (Some(c), _) if c.is_alphanumeric() => None,
-        (Some(s), Some(d)) if is_sep(s) && d.is_ascii_digit() => None,
-        _ => Some(()),
-    }
-}
-
-fn clear_after(tail: &str) -> Option<()> {
-    let mut chars = tail.chars();
-    match (chars.next(), chars.next()) {
-        (Some(c), _) if c.is_alphanumeric() => None,
-        (Some(s), Some(d)) if is_sep(s) && d.is_ascii_digit() => None,
-        _ => Some(()),
-    }
-}
-
-fn numeric_at(text: &str, start: usize, order: Option<DateOrder>) -> Option<NumericDate> {
+pub(super) fn numeric_at(
+    text: &str,
+    start: usize,
+    order: Option<DateOrder>,
+) -> Option<NumericDate> {
     clear_before(text, start)?;
     let rest = text.get(start..)?;
     let (a, a_len) = digits(rest, 4)?;

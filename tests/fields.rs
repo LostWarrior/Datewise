@@ -1,6 +1,5 @@
 use chrono::{NaiveTime, Weekday};
 use datewise::fields::{find_ordinal_date, find_time, find_time_range, TimeError};
-use datewise::MAX_INPUT_BYTES;
 
 fn t(h: u32, m: u32) -> NaiveTime {
     NaiveTime::from_hms_opt(h, m, 0).unwrap()
@@ -102,11 +101,26 @@ fn single_time_forms() {
 }
 
 #[test]
-fn over_long_input_is_rejected() {
-    let long = format!("{} 3pm 24th June", "x".repeat(MAX_INPUT_BYTES));
-    assert!(find_time(&long).is_none());
-    assert!(find_ordinal_date(&long).is_none());
-    assert_eq!(find_time_range(&long), Ok(None));
+fn finders_see_the_end_of_long_text() {
+    use chrono::NaiveDate;
+    use datewise::fields::find_numeric_date;
+    use datewise::locale::DateOrder;
+    use datewise::zone::{find_zone, FoundZone};
+    let filler = "lorem ipsum dolor sit amet, ".repeat(400);
+    assert!(filler.len() > 10_000);
+    let text = format!("{filler}Sat 24th June, 3pm - 4:30pm UTC, 03/10/2026");
+    assert_eq!(find_ordinal_date(&text).unwrap().day, 24);
+    assert_eq!(&text[find_time(&text).unwrap().span], "3pm");
+    assert!(find_time_range(&text).unwrap().is_some());
+    assert!(matches!(
+        find_zone(&text, None).unwrap().zone,
+        FoundZone::Fixed(_)
+    ));
+    let numeric = find_numeric_date(&text, Some(DateOrder::DayFirst)).unwrap();
+    assert_eq!(
+        numeric.dates,
+        vec![NaiveDate::from_ymd_opt(2026, 10, 3).unwrap()]
+    );
 }
 
 #[test]

@@ -10,7 +10,6 @@ use chrono_tz::Tz;
 use std::fmt;
 use std::ops::Range;
 
-// Largest real UTC offset, in hours (Kiribati).
 const MAX_OFFSET_HOURS: u32 = 14;
 
 /// The text is not a known IANA time zone name.
@@ -29,8 +28,11 @@ impl std::error::Error for ZoneError {}
 ///
 /// # Errors
 ///
-/// [`ZoneError`] when `name` is not a known zone.
+/// [`ZoneError`] if the name is unknown.
 pub fn parse_zone(name: &str) -> Result<Tz, ZoneError> {
+    if !within_limit(name) {
+        return Err(ZoneError);
+    }
     name.parse().map_err(|_| ZoneError)
 }
 
@@ -62,13 +64,9 @@ pub struct ZoneMatch {
     pub zone: FoundZone,
 }
 
-/// Finds the first upper-case abbreviation (`PST`), `UTC`/`GMT` with optional offset, `Z`
-/// after a time, or numeric offset (`+05:30`, `+0530`); `locale` picks shared abbreviations.
+/// Finds the first zone: abbreviation, `UTC`/`GMT` offset, `Z` after a time, or numeric offset.
 #[must_use]
 pub fn find_zone(text: &str, locale: Option<Locale>) -> Option<ZoneMatch> {
-    if !within_limit(text) {
-        return None;
-    }
     let region = locale.map(|l| l.region());
     text.char_indices().find_map(|(start, _)| {
         let rest = text.get(start..)?;
@@ -126,17 +124,16 @@ fn marker_at(text: &str, start: usize, rest: &str) -> Option<(usize, FoundZone)>
         let zero = FixedOffset::east_opt(0)?;
         return (after_time && word_end(rest.get(1..)?)).then_some((1, FoundZone::Fixed(zero)));
     }
+    let (len, offset) = signed(rest, true)?;
     let min_colons = if rest.starts_with('-') { 2 } else { 1 };
     let anchored = match before {
         Some(c) if c.is_alphabetic() => false,
         Some(c) if c.is_ascii_digit() => colons_before(text, start) >= min_colons,
         _ => true,
     };
-    let (offset, len) = signed(rest, true).map(|(len, offset)| (offset, len))?;
     (anchored && word_end(rest.get(len..)?)).then_some((len, FoundZone::Fixed(offset)))
 }
 
-// Colons in the time-like run (digits, `:`, `.`) ending at `pos`.
 fn colons_before(text: &str, pos: usize) -> usize {
     text.get(..pos).map_or(0, |head| {
         head.chars()
@@ -147,8 +144,7 @@ fn colons_before(text: &str, pos: usize) -> usize {
     })
 }
 
-// `+h`, `+hh:mm` or `+hhmm` at the start of `s`: (bytes consumed, offset). A bare
-// `+h` needs a UTC/GMT prefix, so `bare` rejects it.
+// `bare` rejects `+h`, which needs a UTC/GMT prefix.
 fn signed(s: &str, bare: bool) -> Option<(usize, FixedOffset)> {
     let sign = match s.chars().next()? {
         '+' => 1,
@@ -164,7 +160,6 @@ fn signed(s: &str, bare: bool) -> Option<(usize, FixedOffset)> {
     Some((1 + len, FixedOffset::east_opt(seconds)?))
 }
 
-// `hhmm`, `h:mm` or (unless `bare`) `h`: (hours, minutes, bytes consumed).
 fn clock(body: &str, bare: bool) -> Option<(u32, u32, usize)> {
     if let Some((value, 4)) = digits(body, 4) {
         return Some((value / 100, value % 100, 4));

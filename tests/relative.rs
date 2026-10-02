@@ -5,7 +5,6 @@ fn d(y: i32, m: u32, day: u32) -> NaiveDate {
     NaiveDate::from_ymd_opt(y, m, day).unwrap()
 }
 
-// Friday 2 October 2026, window through the end of the year.
 fn parse(text: &str) -> Relative {
     parse_at(text, d(2026, 10, 2), d(2026, 10, 1), d(2026, 12, 31))
 }
@@ -241,4 +240,15 @@ fn extreme_dates_do_not_panic() {
             let _ = parse_relative(text, today, w, None);
         }
     }
+}
+
+#[test]
+fn oversized_input_is_unparsed() {
+    let today = NaiveDate::from_ymd_opt(2026, 10, 2).unwrap();
+    let window = Window::new(NaiveDate::MIN, NaiveDate::MAX).unwrap();
+    let text = format!("{}today", " ".repeat(datewise::MAX_INPUT_BYTES));
+    assert_eq!(
+        parse_relative(&text, today, window, None),
+        Relative::Unparsed
+    );
 }

@@ -148,6 +148,14 @@ fn word_boundaries_prevent_false_positives() {
 }
 
 #[test]
-fn oversized_input_is_ignored() {
-    assert_eq!(find_zone(&format!("{}UTC", " ".repeat(600)), None), None);
+fn zone_is_found_at_the_end_of_long_text() {
+    let text = format!("{}UTC", " ".repeat(10_000));
+    assert_eq!(find_zone(&text, None).unwrap().span, 10_000..10_003);
+}
+
+#[test]
+fn whole_input_parsers_reject_oversized_input() {
+    let long = "a".repeat(datewise::MAX_INPUT_BYTES + 1);
+    assert!(datewise::zone::parse_zone(&long).is_err());
+    assert!(Locale::from_tag(&long).is_none());
 }

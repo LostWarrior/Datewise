@@ -1,6 +1,6 @@
 use chrono::NaiveDate;
 use datewise::fields::{
-    find_numeric_date, find_ordinal_date, find_time, find_time_range, month_prefix, weekday_before,
+    find_date, find_numeric_date, find_ordinal_date, find_time, find_time_range, month_prefix,
 };
 use datewise::locale::{DateOrder, Locale};
 use datewise::names::{month_from_name, ordinal_suffix_len, weekday_from_name};
@@ -89,7 +89,7 @@ fn exercise(text: &str, today: NaiveDate, window: Window) {
     let _ = find_ordinal_date(text);
     let _ = find_time(text);
     let _ = find_time_range(text);
-    let _ = weekday_before(text);
+    let _ = find_date(text, None);
     let _ = month_prefix(text);
     let _ = month_from_name(text);
     let _ = weekday_from_name(text);
@@ -103,6 +103,7 @@ fn exercise(text: &str, today: NaiveDate, window: Window) {
     ] {
         let _ = parse_relative(text, today, window, locale);
         let _ = find_zone(text, locale);
+        let _ = find_date(text, locale);
         let _ = find_numeric_date(text, locale.map(|l| l.date_order()));
     }
     for order in [
@@ -125,12 +126,25 @@ fn random_text_never_panics() {
     ];
     let window = Window::new(NaiveDate::MIN, NaiveDate::MAX).unwrap();
     let mut rng = Lcg(0x5eed);
-    for _ in 0..20_000 {
+    for i in 0..20_000 {
         let text = rng.text();
         let today = todays[rng.below(todays.len())];
         exercise(&text, today, window);
-        let long = text.repeat(40);
-        exercise(&long, today, window);
+        if i % 100 == 0 {
+            exercise(&text.repeat(40), today, window);
+        }
+        if i % 1000 == 0 {
+            exercise(&text.repeat(20_000 / text.len().max(1) + 1), today, window);
+        }
+    }
+}
+
+#[test]
+fn long_pathological_text_stays_fast() {
+    let today = NaiveDate::from_ymd_opt(2026, 10, 2).unwrap();
+    let window = Window::new(NaiveDate::MIN, NaiveDate::MAX).unwrap();
+    for fragment in ["1:", "1111111111", "    ", "1 - ", "1+", "May ", "10:00Z "] {
+        exercise(&fragment.repeat(20_000 / fragment.len()), today, window);
     }
 }
 

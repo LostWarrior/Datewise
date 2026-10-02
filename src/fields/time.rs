@@ -1,4 +1,4 @@
-use crate::scan::{boundary, dash, digits, glued_before, skip_spaces, within_limit};
+use crate::scan::{boundary, dash, digits, glued_before, skip_spaces};
 use chrono::NaiveTime;
 use std::fmt;
 use std::ops::Range;
@@ -50,9 +50,6 @@ struct Clock {
 /// Finds the first 12-hour time with an explicit `am`/`pm`, such as `3pm` or `11.45am`.
 #[must_use]
 pub fn find_time(text: &str) -> Option<TimeOfDay> {
-    if !within_limit(text) {
-        return None;
-    }
     text.char_indices().find_map(|(start, _)| {
         let clock = clock_at(text.get(start..)?).filter(|c| c.pm.is_some())?;
         (!glued_before(text, start)).then_some(())?;
@@ -63,24 +60,12 @@ pub fn find_time(text: &str) -> Option<TimeOfDay> {
     })
 }
 
-/// Finds the first `TIME [am/pm] (-|en dash) TIME [am/pm]` with at least one meridiem.
-///
-/// A missing meridiem is taken from the other side, or flipped if that would not ascend.
+/// Finds the first `7 - 8pm` style range, taking a missing meridiem from the other side.
 ///
 /// # Errors
 ///
-/// [`TimeError::AmbiguousMeridiem`] when the range cannot be made ascending.
-///
-/// ```
-/// use datewise::fields::find_time_range;
-///
-/// let range = find_time_range("Library 7 - 8pm").unwrap().unwrap();
-/// assert_eq!((range.start.to_string(), range.end.to_string()), ("19:00:00".into(), "20:00:00".into()));
-/// ```
+/// [`TimeError::AmbiguousMeridiem`] if the range cannot ascend.
 pub fn find_time_range(text: &str) -> Result<Option<TimeRange>, TimeError> {
-    if !within_limit(text) {
-        return Ok(None);
-    }
     for (start, _) in text.char_indices() {
         if glued_before(text, start) {
             continue;
@@ -143,7 +128,6 @@ fn clock_at(s: &str) -> Option<Clock> {
     })
 }
 
-/// `<hour 1-12>[(:|.)<minute 2 digits>]`; returns hour, minute, bytes used.
 fn time_number(s: &str) -> Option<(u32, u32, usize)> {
     let (hour, mut len) = digits(s, 2)?;
     if !(1..=12).contains(&hour) {
@@ -160,7 +144,6 @@ fn time_number(s: &str) -> Option<(u32, u32, usize)> {
     Some((hour, minute, len))
 }
 
-/// Optional single space, then `am`/`pm`; returns `(is_pm, bytes used)`.
 fn meridiem(s: &str) -> Option<(bool, usize)> {
     let rest = s.strip_prefix(' ').unwrap_or(s);
     let head = rest.get(..2)?;

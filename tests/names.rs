@@ -1,5 +1,5 @@
 use chrono::Weekday;
-use datewise::fields::{month_prefix, weekday_before};
+use datewise::fields::{find_ordinal_date, month_prefix};
 use datewise::names::{month_from_name, ordinal_suffix_len, weekday_from_name};
 
 #[test]
@@ -69,11 +69,12 @@ fn month_prefix_prefers_longest_and_respects_boundary() {
 
 #[test]
 fn weekday_before_needs_single_trailing_space() {
+    let weekday = |text| find_ordinal_date(text).and_then(|found| found.weekday);
     assert_eq!(
-        weekday_before("Sports Day on Wednesday "),
+        weekday("Sports Day on Wednesday 3rd May"),
         Some(Weekday::Wed)
     );
-    assert_eq!(weekday_before("xWednesday "), None);
-    assert_eq!(weekday_before("Wednesday"), None);
-    assert_eq!(weekday_before("é "), None);
+    assert_eq!(weekday("xWednesday 3rd May"), None);
+    assert_eq!(weekday("Wednesday  3rd May"), None);
+    assert_eq!(weekday("\u{e9} 3rd May"), None);
 }

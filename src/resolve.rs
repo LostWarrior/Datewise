@@ -16,9 +16,7 @@ pub enum YearMode {
     PreviousOnOrBefore,
 }
 
-/// Builds a date from an explicit `year`, or infers it from `anchor` per `mode`.
-///
-/// `None` for dates that do not exist, such as 31 April.
+/// Builds a date from `year`, or infers the year from `anchor`; `None` if the date does not exist.
 #[must_use]
 pub fn resolve_date(
     day: u32,

@@ -3,11 +3,8 @@ use chrono_tz::Tz;
 
 pub(super) struct Abbrev {
     pub(super) name: &'static str,
-    // Zone used in every region, when the abbreviation is not shared.
     always: Option<Tz>,
-    // Zone used only when the locale's region is listed.
     by_region: &'static [(&'static str, Tz)],
-    // Known meanings reported when neither of the above applies.
     pub(super) candidates: &'static [Tz],
 }
 

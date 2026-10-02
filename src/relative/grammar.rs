@@ -1,7 +1,6 @@
-use crate::fields::find_numeric_date;
+use crate::fields::{find_numeric_date, iso_date};
 use crate::locale::Locale;
 use crate::names::{month_from_name, ordinal_suffix_len, weekday_from_name};
-use crate::resolve::{resolve_date, YearMode};
 use crate::scan::{digits, within_limit, year, YEAR_DIGITS};
 use chrono::{Datelike, Days, NaiveDate, Weekday};
 
@@ -132,7 +131,6 @@ fn month_day(tokens: &[&str]) -> Option<Parsed> {
     }
 }
 
-/// Day number 1-31 with an optional (or, if `need_suffix`, required) ordinal suffix.
 fn parse_day(token: &str, need_suffix: bool) -> Option<u32> {
     let (day, len) = digits(token, 2)?;
     let suffix = token.get(len..)?;
@@ -146,15 +144,4 @@ fn parse_day(token: &str, need_suffix: bool) -> Option<u32> {
 fn whole_year(token: &str) -> Option<i32> {
     (token.len() == YEAR_DIGITS).then_some(())?;
     year(token)
-}
-
-fn iso_date(token: &str) -> Option<NaiveDate> {
-    let mut parts = token.split('-');
-    let (y, m, d) = (parts.next()?, parts.next()?, parts.next()?);
-    if parts.next().is_some() || m.len() != 2 || d.len() != 2 {
-        return None;
-    }
-    let field = |s: &str| digits(s, YEAR_DIGITS).filter(|(_, n)| *n == s.len());
-    let (y, m, d) = (whole_year(y)?, field(m)?.0, field(d)?.0);
-    resolve_date(d, m, Some(y), NaiveDate::MIN, YearMode::NextOnOrAfter)
 }

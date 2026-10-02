@@ -59,17 +59,13 @@ pub enum Relative {
     Span(NaiveDate, NaiveDate),
     /// The phrase is clear but its date falls outside the window.
     OutOfWindow(NaiveDate),
-    /// Several readings fall in the window: a yearless phrase (its first two
-    /// occurrences) or a numeric date whose order the locale does not decide.
+    /// Several readings fall in the window.
     Ambiguous(Vec<NaiveDate>),
     /// The text is not a supported phrase.
     Unparsed,
 }
 
-/// Parses `text` relative to `today` and checks the result against `window`.
-///
-/// `locale` sets numeric date order and week start; `None` means Monday weeks and
-/// every valid numeric reading.
+/// Parses `text` relative to `today` and checks it against `window`; `locale` sets order and week start.
 ///
 /// ```
 /// use chrono::NaiveDate;

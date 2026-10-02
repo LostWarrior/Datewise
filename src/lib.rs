@@ -8,7 +8,6 @@
     clippy::panic,
     clippy::indexing_slicing
 )]
-// Item names repeat their module on purpose (`fields::find_time`).
 #![allow(clippy::module_name_repetitions)]
 
 pub mod fields;
@@ -19,5 +18,5 @@ pub mod resolve;
 mod scan;
 pub mod zone;
 
-/// Longest input, in bytes, that any parser will examine.
+/// Longest input, in bytes, accepted by whole-input parsers; finders scan any length.
 pub const MAX_INPUT_BYTES: usize = 512;
