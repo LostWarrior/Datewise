@@ -22,7 +22,4 @@ assert_eq!(parser.prefer_past().parse("3 March").unwrap().to_string(), "2026-03-
 assert_eq!(parser.parse("tomorrow-ish"), Err(ParseError::Unparsed));
 ```
 
-`Parser` matches the whole input. To pull dates and times out of free text, use the finders in
-`datewise::fields`; `datewise::relative` and `datewise::resolve` expose the lower-level pieces.
-
 Licensed under MIT or Apache-2.0, at your option.
