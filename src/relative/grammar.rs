@@ -1,3 +1,5 @@
+use crate::fields::find_numeric_date;
+use crate::locale::Locale;
 use crate::names::{month_from_name, ordinal_suffix_len, weekday_from_name};
 use crate::resolve::{resolve_date, YearMode};
 use crate::scan::{digits, within_limit, year, YEAR_DIGITS};
@@ -7,10 +9,12 @@ const MAX_TOKENS: usize = 6;
 
 pub(super) enum Parsed {
     Date(NaiveDate),
+    Span(NaiveDate, NaiveDate),
+    Numeric(Vec<NaiveDate>),
     YearlessDay { day: u32, month: u32 },
 }
 
-pub(super) fn parse(text: &str, today: NaiveDate) -> Option<Parsed> {
+pub(super) fn parse(text: &str, today: NaiveDate, locale: Option<Locale>) -> Option<Parsed> {
     if !within_limit(text) {
         return None;
     }
@@ -33,9 +37,11 @@ pub(super) fn parse(text: &str, today: NaiveDate) -> Option<Parsed> {
         }
     }
     match tokens {
-        [one] => single(one, today),
-        [word, target] if is(word, "next") => next_target(target, today),
-        [word, target] if is(word, "this") && is(target, "week") => week_monday(today, 0),
+        [one] => single(one, today, locale),
+        [word, target] if is(word, "next") => next_target(target, today, week_start(locale)),
+        [word, target] if is(word, "this") && is(target, "week") => {
+            week_span(today, week_start(locale), 0)
+        }
         _ => month_day(tokens),
     }
 }
@@ -48,7 +54,7 @@ fn date(date: Option<NaiveDate>) -> Option<Parsed> {
     date.map(Parsed::Date)
 }
 
-fn single(token: &str, today: NaiveDate) -> Option<Parsed> {
+fn single(token: &str, today: NaiveDate, locale: Option<Locale>) -> Option<Parsed> {
     if is(token, "today") {
         return date(Some(today));
     }
@@ -65,25 +71,33 @@ fn single(token: &str, today: NaiveDate) -> Option<Parsed> {
     if let Some(iso) = iso_date(token) {
         return date(Some(iso));
     }
+    let order = locale.map(|l| l.date_order());
+    if let Some(found) = find_numeric_date(token, order).filter(|f| f.span.len() == token.len()) {
+        return Some(Parsed::Numeric(found.dates));
+    }
     day_of_month(parse_day(token, true)?, today)
 }
 
-fn next_target(target: &str, today: NaiveDate) -> Option<Parsed> {
+fn next_target(target: &str, today: NaiveDate, start: Weekday) -> Option<Parsed> {
     if is(target, "week") {
-        return week_monday(today, 1);
+        return week_span(today, start, 1);
     }
     let weekday = weekday_from_name(target)?;
-    let offset = 7 + u64::from(weekday.num_days_from_monday());
-    date(monday_of(today)?.checked_add_days(Days::new(offset)))
+    let offset = 7 + days_between(start, weekday);
+    date(start_of_week(today, start)?.checked_add_days(Days::new(offset)))
 }
 
-fn week_monday(today: NaiveDate, weeks_ahead: u64) -> Option<Parsed> {
-    date(monday_of(today)?.checked_add_days(Days::new(7 * weeks_ahead)))
+fn week_start(locale: Option<Locale>) -> Weekday {
+    locale.map_or(Weekday::Mon, |l| l.week_start())
 }
 
-fn monday_of(day: NaiveDate) -> Option<NaiveDate> {
-    let back = u64::from(day.weekday().num_days_from_monday());
-    day.checked_sub_days(Days::new(back))
+fn week_span(today: NaiveDate, start: Weekday, weeks_ahead: u64) -> Option<Parsed> {
+    let first = start_of_week(today, start)?.checked_add_days(Days::new(7 * weeks_ahead))?;
+    Some(Parsed::Span(first, first.checked_add_days(Days::new(6))?))
+}
+
+fn start_of_week(day: NaiveDate, start: Weekday) -> Option<NaiveDate> {
+    day.checked_sub_days(Days::new(days_between(start, day.weekday())))
 }
 
 fn days_between(from: Weekday, to: Weekday) -> u64 {

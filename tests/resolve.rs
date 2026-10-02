@@ -113,3 +113,18 @@ fn local_date_follows_the_zone() {
     assert_eq!(local_date(i64::MAX, London), None);
     assert_eq!(local_date(i64::MIN, London), None);
 }
+
+#[test]
+fn previous_on_or_before_looks_back() {
+    use datewise::resolve::YearMode;
+    let (today, mode) = (d(2026, 10, 2), YearMode::PreviousOnOrBefore);
+    assert_eq!(resolve_date(2, 10, None, today, mode), Some(d(2026, 10, 2)));
+    assert_eq!(resolve_date(3, 10, None, today, mode), Some(d(2025, 10, 3)));
+    assert_eq!(resolve_date(1, 1, None, today, mode), Some(d(2026, 1, 1)));
+    assert_eq!(resolve_date(29, 2, None, today, mode), Some(d(2024, 2, 29)));
+    assert_eq!(resolve_date(31, 4, None, today, mode), None);
+    assert_eq!(
+        resolve_date(3, 10, Some(2030), today, mode),
+        Some(d(2030, 10, 3))
+    );
+}

@@ -108,3 +108,35 @@ fn over_long_input_is_rejected() {
     assert!(find_ordinal_date(&long).is_none());
     assert_eq!(find_time_range(&long), Ok(None));
 }
+
+#[test]
+fn numeric_date_in_text_reports_span_and_readings() {
+    use chrono::NaiveDate;
+    use datewise::fields::find_numeric_date;
+    use datewise::locale::DateOrder;
+    let text = "Due 03/10/2026, then 13.10.26.";
+    let first = find_numeric_date(text, None).unwrap();
+    assert_eq!(&text[first.span.clone()], "03/10/2026");
+    assert_eq!(first.dates.len(), 2);
+    let gb = find_numeric_date(text, Some(DateOrder::DayFirst)).unwrap();
+    assert_eq!(
+        gb.dates,
+        vec![NaiveDate::from_ymd_opt(2026, 10, 3).unwrap()]
+    );
+    let rest = &text[first.span.end..];
+    let second = find_numeric_date(rest, None).unwrap();
+    assert_eq!(&rest[second.span], "13.10.26");
+    assert_eq!(
+        second.dates,
+        vec![NaiveDate::from_ymd_opt(2026, 10, 13).unwrap()]
+    );
+    for bad in [
+        "v1.2.2026.1",
+        "a03/10/2026",
+        "03/10/2026x",
+        "1.3.10.2026",
+        "12345/10/2026",
+    ] {
+        assert_eq!(find_numeric_date(bad, None), None, "{bad}");
+    }
+}

@@ -1,11 +1,12 @@
 use chrono::NaiveDate;
 use datewise::fields::{
-    find_ordinal_date, find_time, find_time_range, month_prefix, weekday_before,
+    find_numeric_date, find_ordinal_date, find_time, find_time_range, month_prefix, weekday_before,
 };
+use datewise::locale::{DateOrder, Locale};
 use datewise::names::{month_from_name, ordinal_suffix_len, weekday_from_name};
 use datewise::relative::{parse_relative, Window};
 use datewise::resolve::{resolve_date, YearMode};
-use datewise::zone::{local_date, parse_zone};
+use datewise::zone::{find_zone, local_date, parse_zone};
 
 const FRAGMENTS: &[&str] = &[
     "jan",
@@ -42,6 +43,17 @@ const FRAGMENTS: &[&str] = &[
     "2026-10-03",
     "of",
     "/",
+    "03/10/2026",
+    "3.10.26",
+    "2026/10/03",
+    "UTC+5",
+    "+05:30",
+    "-0530",
+    "GMT-",
+    "10:00Z",
+    "PST",
+    "IST",
+    "CT",
 ];
 
 struct Lcg(u64);
@@ -83,7 +95,24 @@ fn exercise(text: &str, today: NaiveDate, window: Window) {
     let _ = weekday_from_name(text);
     let _ = ordinal_suffix_len(text);
     let _ = parse_zone(text);
-    let _ = parse_relative(text, today, window);
+    for locale in [
+        None,
+        Some(Locale::EN_GB),
+        Some(Locale::EN_US),
+        Some(Locale::EN_CA),
+    ] {
+        let _ = parse_relative(text, today, window, locale);
+        let _ = find_zone(text, locale);
+        let _ = find_numeric_date(text, locale.map(|l| l.date_order()));
+    }
+    for order in [
+        DateOrder::DayFirst,
+        DateOrder::MonthFirst,
+        DateOrder::YearFirst,
+    ] {
+        let _ = find_numeric_date(text, Some(order));
+    }
+    let _ = Locale::from_tag(text);
 }
 
 #[test]
@@ -116,6 +145,8 @@ fn random_numbers_never_panic() {
             .unwrap_or(NaiveDate::MAX);
         let _ = resolve_date(day, month, Some(year), anchor, YearMode::NextOnOrAfter);
         let _ = resolve_date(day, month, None, anchor, YearMode::NextOnOrAfter);
+        let _ = resolve_date(day, month, Some(year), anchor, YearMode::PreviousOnOrBefore);
+        let _ = resolve_date(day, month, None, anchor, YearMode::PreviousOnOrBefore);
         let epoch = i64::try_from(rng.next()).unwrap() * i64::try_from(rng.next()).unwrap();
         let _ = local_date(epoch, chrono_tz::Europe::London);
     }

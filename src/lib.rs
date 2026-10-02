@@ -12,6 +12,7 @@
 #![allow(clippy::module_name_repetitions)]
 
 pub mod fields;
+pub mod locale;
 pub mod names;
 pub mod relative;
 pub mod resolve;

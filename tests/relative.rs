@@ -11,7 +11,7 @@ fn parse(text: &str) -> Relative {
 }
 
 fn parse_at(text: &str, today: NaiveDate, start: NaiveDate, end: NaiveDate) -> Relative {
-    parse_relative(text, today, Window::new(start, end).unwrap())
+    parse_relative(text, today, Window::new(start, end).unwrap(), None)
 }
 
 fn ok(y: i32, m: u32, day: u32) -> Relative {
@@ -55,11 +55,17 @@ fn next_weekday_is_in_the_following_week() {
 }
 
 #[test]
-fn week_phrases_return_the_monday() {
-    assert_eq!(parse("this week"), Relative::OutOfWindow(d(2026, 9, 28)));
-    assert_eq!(parse("next week"), ok(2026, 10, 5));
+fn week_phrases_return_a_monday_span_by_default() {
+    let span = |a, b| Relative::Span(a, b);
+    assert_eq!(parse("this week"), span(d(2026, 9, 28), d(2026, 10, 4)));
+    assert_eq!(parse("next week"), span(d(2026, 10, 5), d(2026, 10, 11)));
     let (s, e) = (d(2026, 12, 1), d(2027, 1, 31));
-    assert_eq!(parse_at("next week", d(2026, 12, 30), s, e), ok(2027, 1, 4));
+    assert_eq!(
+        parse_at("next week", d(2026, 12, 30), s, e),
+        span(d(2027, 1, 4), d(2027, 1, 10))
+    );
+    let before = parse_at("this week", d(2026, 10, 2), d(2026, 10, 5), d(2026, 10, 9));
+    assert_eq!(before, Relative::OutOfWindow(d(2026, 9, 28)));
 }
 
 #[test]
@@ -232,7 +238,7 @@ fn extreme_dates_do_not_panic() {
             "3 Oct",
             "Friday",
         ] {
-            let _ = parse_relative(text, today, w);
+            let _ = parse_relative(text, today, w, None);
         }
     }
 }

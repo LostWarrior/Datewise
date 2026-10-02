@@ -3,7 +3,7 @@
 use chrono::{DateTime, Datelike, LocalResult, NaiveDate, NaiveDateTime, TimeZone, Utc};
 use chrono_tz::Tz;
 
-// Spans the longest gap between leap days (2096 to 2104).
+// Search distance in either direction; spans the longest gap between leap days (2096 to 2104).
 const MAX_LOOKAHEAD_YEARS: i32 = 8;
 
 /// How a missing year is inferred.
@@ -12,6 +12,8 @@ const MAX_LOOKAHEAD_YEARS: i32 = 8;
 pub enum YearMode {
     /// First occurrence on or after the anchor; a leap day waits for the next leap year.
     NextOnOrAfter,
+    /// Latest occurrence on or before the anchor; a leap day reaches back to the last leap year.
+    PreviousOnOrBefore,
 }
 
 /// Builds a date from an explicit `year`, or infers it from `anchor` per `mode`.
@@ -34,6 +36,13 @@ pub fn resolve_date(
             (first..=first.saturating_add(MAX_LOOKAHEAD_YEARS))
                 .filter_map(|y| NaiveDate::from_ymd_opt(y, month, day))
                 .find(|date| *date >= anchor)
+        }
+        YearMode::PreviousOnOrBefore => {
+            let last = anchor.year();
+            (last.saturating_sub(MAX_LOOKAHEAD_YEARS)..=last)
+                .rev()
+                .filter_map(|y| NaiveDate::from_ymd_opt(y, month, day))
+                .find(|date| *date <= anchor)
         }
     }
 }
