@@ -4,12 +4,12 @@ version = "0.1.0"
 edition = "2021"
 rust-version = "1.70"
 description = "Small, panic-free parser for English date and time phrases with time zone and DST handling"
-license = "MIT OR Apache-2.0"
+license = "Apache-2.0"
 readme = "README.md"
 repository = "https://github.com/LostWarrior/Datewise"
 keywords = ["date", "time", "parser", "natural-language", "timezone"]
 categories = ["date-and-time", "parser-implementations"]
-include = ["src/**/*.rs", "tests/**/*.rs", "README.md", "CHANGELOG.md", "LICENSE-MIT", "LICENSE-APACHE"]
+include = ["src/**/*.rs", "tests/**/*.rs", "README.md", "CHANGELOG.md", "LICENSE-APACHE"]
 
 [dependencies]
 chrono = { version = "0.4", default-features = false, features = ["std"] }

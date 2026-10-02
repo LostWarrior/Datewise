@@ -22,4 +22,4 @@ assert_eq!(parser.prefer_past().parse("3 March").unwrap().to_string(), "2026-03-
 assert_eq!(parser.parse("tomorrow-ish"), Err(ParseError::Unparsed));
 ```
 
-Licensed under MIT or Apache-2.0, at your option.
+Licensed under Apache-2.0.
